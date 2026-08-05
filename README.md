@@ -91,5 +91,5 @@ godot --headless --path . --script res://tests/test_polyforge.gd
 
 ## Credit and licensing
 
-See [`NOTICE.md`](NOTICE.md) for the WAM-derived modules and pinned source commits. No
-repository-wide license has been selected yet; add one before offering downstream reuse.
+See [`NOTICE.md`](NOTICE.md) for the WAM-derived modules, permission record, and pinned
+source commits. This repository is distributed under the MIT License; see [`LICENSE`](LICENSE).

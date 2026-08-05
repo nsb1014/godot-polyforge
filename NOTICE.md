@@ -22,4 +22,5 @@ Credit: **Elliott Dehn — WAM (WoW-ish Art Model language)**.
 
 The repository owner has represented that permission was granted by WAM's owner to copy,
 modify, and use these materials. No upstream WAM license file was present at the pinned
-commit. This notice records provenance and credit; it is not itself a software license.
+commit. This notice records provenance and credit. Repository-wide terms are in `LICENSE`;
+the WAM-derived portions are included under the separate permission described above.
