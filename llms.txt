@@ -11,9 +11,14 @@ Read `examples/bronze_guardian_recipe.gd`, then create a project-owned recipe wi
 ```gdscript
 extends RefCounted
 const Assembly := preload("res://addons/polyforge/core/assembly.gd")
+const Parameters := preload("res://addons/polyforge/core/parameters.gd")
 const Stock := preload("res://addons/polyforge/core/stock.gd")
 
-func build() -> Dictionary:
+func parameters() -> Dictionary:
+	return {"height": Parameters.scale(1.0, 0.5, 2.0, "m", "Canonical height")}
+
+func build(p) -> Dictionary:
+	var height := p.value("height")
 	var asset := Assembly.new()
 	# asset.add("semantic_name", mesh, transform, {"tags": [...]})
 	return {
@@ -31,7 +36,7 @@ Compile it with Godot, not Node:
 
 ```bash
 godot --path . --script res://addons/polyforge/cli/polyforge_cli.gd -- \
-  build res://models/my_asset.gd --out res://dist --mode both
+  build res://models/my_asset.gd --param height=1.4 --out res://dist --mode both
 ```
 
 Outputs are GLB, manifest JSON, self-contained review HTML/JSON, and a four-view PNG when
@@ -42,6 +47,14 @@ Godot before the build succeeds.
 
 - +Y is up. Declare `front` explicitly; bundled examples use +Z.
 - Give every independently meaningful part a stable semantic name.
+- Declare a small set of bounded primary measurements with `parameters()`; use
+  `Parameters.scale()` for the canonical uniform asset size.
+- Express each physical dimension against the closest measurement belonging to the same part.
+- Use `p.derive(name, source, factor)` for simple ratios and `p.computed()` for multi-source values.
+- Never type a coordinate that describes a relationship; calculate it from the geometry or
+  dimension it must meet.
+- Let the default min/base/max parameter sweep run before accepting an asset.
+- Add `Checks.require_axis_size()` assertions proving important dimensions reached the mesh.
 - Derive anchors and attachment positions from the geometry they describe.
 - Use `--mode preserve` for movable/addressable parts, `merge` for static batching, or
   `both` when authoring and runtime needs differ.

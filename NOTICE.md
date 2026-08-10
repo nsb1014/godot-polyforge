@@ -25,3 +25,12 @@ The repository owner has represented that permission was granted by WAM's owner 
 modify, and use these materials. No upstream WAM license file was present at the pinned
 commit. This notice records provenance and credit. Repository-wide terms are in `LICENSE`;
 the WAM-derived portions are included under the separate permission described above.
+
+## Design reference
+
+The dimension-driven recipe workflow added to `core/parameters.gd` was independently
+implemented in GDScript after studying the public documentation and unminified source of
+[`antics-modelkit`](https://antics.gg/modelkit), version 0.11.1, by the Antics team. Its
+principles of naming dimensions, deriving relational coordinates, measuring emitted geometry,
+and running checks automatically informed the design. No ModelKit source code or proportion
+table is copied into this repository. ModelKit is distributed under the MIT License.

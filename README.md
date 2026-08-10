@@ -18,6 +18,7 @@ palette, catalog, asset naming scheme, or output path dependency.
 | `core/palette.gd` | OKLab palette and dimension-grid snapping |
 | `core/assembly.gd` | Named subparts, local frames, intentional-overlap metadata, merge, and mirroring |
 | `core/asset_recipe.gd` | Project-owned recipe loading and normalized compiler contract |
+| `core/parameters.gd` | Validated primary measurements, derived-dimension provenance, overrides, and sweeps |
 | `core/stock.gd` | Godot primitive and material factories for named recipes |
 | `core/surface_attach.gd` | Closest-surface placement with normal-aligned frames and inset |
 | `core/paint.gd` | Deterministic gradients, noise, streaks, bands, planks, bricks, and painted AO |
@@ -66,7 +67,7 @@ execute at game startup.
 ```bash
 godot --path . --script res://addons/polyforge/cli/polyforge_cli.gd -- \
   build res://examples/bronze_guardian_recipe.gd \
-  --out res://dist --mode both
+  --param height=4.2 --param bulk=1.1 --out res://dist --mode both
 ```
 
 The build produces:
@@ -97,25 +98,68 @@ A project-owned recipe exposes `build()` and returns a named assembly plus optio
 extends RefCounted
 
 const Assembly := preload("res://addons/polyforge/core/assembly.gd")
+const Parameters := preload("res://addons/polyforge/core/parameters.gd")
 const Stock := preload("res://addons/polyforge/core/stock.gd")
 
-func build() -> Dictionary:
-    var asset := Assembly.new()
-    var steel := Stock.material("steel", Color("68635f"), 0.6, 0.7)
-    asset.add("body", Stock.with_material(Stock.box(Vector3.ONE), steel))
-    return {
+func parameters() -> Dictionary:
+	return {
+		"width": Parameters.scale(0.6, 0.3, 1.2, "m", "Canonical crate width"),
+	}
+
+func build(p) -> Dictionary:
+	var width := p.value("width")
+	var plank := p.derive("body.plank", "width", 0.08)
+	var asset := Assembly.new()
+	var steel := Stock.material("steel", Color("68635f"), 0.6, 0.7)
+	asset.add("body", Stock.with_material(Stock.box(Vector3(width, width, width)), steel))
+	return {
         "name": "crate",
         "category": "prop",
         "assembly": asset,
         "triangle_budget": 1000,
         "checks": [],
-        "anchors": {"top": Vector3(0, 0.5, 0)},
-        "front": "+Z",
-    }
+		"anchors": {"top": Vector3(0, width * 0.5, 0)},
+		"metadata": {"plank_thickness": plank},
+		"front": "+Z",
+	}
 ```
 
 See `examples/bronze_guardian_recipe.gd` for a multi-part model and `llms.txt` for the compact
 agent authoring contract.
+
+### Variable measurements
+
+Recipes may expose `parameters()` and accept the resulting measurement context in `build(p)`.
+Primary measurements have defaults and bounds. Use `Parameters.scale()` for a canonical
+measurement expected to resize all three asset axes uniformly; the sweep verifies the measured
+bounds follow it. Derived measurements name the value they scale
+from, so the manifest can explain relationships such as `head.radius <- torso.height` rather
+than preserving only the final anonymous number.
+
+```gdscript
+var height := p.value("height")
+var torso_height := p.derive("torso.height", "height", 0.46)
+var head_size := p.derive("head.size", "torso.height", 0.34)
+var visor_width := p.derive("head.visor_width", "head.size", 1.15)
+```
+
+`p.computed()` records arbitrary relationships involving more than one source. Use it when a
+dimension depends on both a local measurement and a dimensionless style parameter:
+
+```gdscript
+var width := p.computed("torso.width", torso_height * p.value("bulk") * 0.8,
+	["torso.height", "bulk"], "torso.height * bulk * 0.8")
+```
+
+The compiler automatically rebuilds and validates the base recipe plus the minimum and maximum
+of every declared primary measurement. This one-at-a-time sweep catches hard-coded placements,
+budget overruns, broken proportions, and geometry failures away from the default size. Use
+`--sweep-param height` to restrict the sweep or `--no-sweep` while iterating. Sweep measurements,
+bounds, triangle counts, warnings, and failures are written into the manifest.
+
+Use `Checks.require_axis_size()` to compare emitted geometry with the dimension that claims to
+control it. This catches a parameter that is recorded correctly but was not actually applied to
+the mesh. Anchors are also checked against final asset bounds; outlying anchors report a warning.
 
 ### Preserved versus merged GLB
 

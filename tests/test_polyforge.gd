@@ -5,6 +5,7 @@ const SurfaceAttach := preload("res://addons/polyforge/core/surface_attach.gd")
 const Paint := preload("res://addons/polyforge/core/paint.gd")
 const Assembly := preload("res://addons/polyforge/core/assembly.gd")
 const Stock := preload("res://addons/polyforge/core/stock.gd")
+const Parameters := preload("res://addons/polyforge/core/parameters.gd")
 const AssetRecipe := preload("res://addons/polyforge/core/asset_recipe.gd")
 const Lint := preload("res://addons/polyforge/quality/lint_core.gd")
 const Checks := preload("res://addons/polyforge/quality/checks.gd")
@@ -78,6 +79,32 @@ func _initialize() -> void:
 		"preserved export scene keeps semantic part names")
 	scene.free()
 
+	var dimensions := Parameters.new({
+		"height": Parameters.scale(3.4, 2.4, 5.0, "m", "canonical height"),
+		"bulk": Parameters.number(1.0, 0.8, 1.25, "ratio", "horizontal multiplier"),
+	}, {"height": 4.2})
+	var torso_height := dimensions.derive("torso.height", "height", 0.42)
+	var torso_width := dimensions.computed("torso.width",
+		torso_height * dimensions.value("bulk") * 0.8,
+		["torso.height", "bulk"], "torso.height * bulk * 0.8")
+	var dimensions_snapshot := dimensions.snapshot()
+	check(dimensions.errors.is_empty() and is_equal_approx(dimensions.value("height"), 4.2),
+		"parameter overrides select a validated primary measurement")
+	check(torso_width > 0.0 and dimensions_snapshot.derived["torso.width"].sources.has("torso.height"),
+		"derived measurements retain their local dependency provenance")
+	check(Parameters.sweep_cases(dimensions.schema).size() == 5,
+		"parameter sweep covers base plus both bounds for every primary measurement")
+
+	var guardian := AssetRecipe.load_file("res://examples/bronze_guardian_recipe.gd",
+		{"height": 2.4, "bulk": 1.25})
+	var guardian_validation := BuildPipeline.validate(guardian)
+	check(guardian_validation.failures.is_empty(),
+		"parameterized guardian validates at a non-default measurement combination")
+	var guardian_sweep := BuildPipeline.validate_sweep(AssetRecipe.load_sweep(
+		"res://examples/bronze_guardian_recipe.gd"))
+	check(guardian_sweep.ok and guardian_sweep.records.size() == 5,
+		"parameter sweep validates the guardian at declared measurement bounds")
+
 	var recipe := AssetRecipe.normalize({
 		"name": "named_test",
 		"assembly": asset,
@@ -89,6 +116,8 @@ func _initialize() -> void:
 	var manifest := ManifestExport.data(recipe, validation, {"glb": "named_test.glb"})
 	check(manifest.parts.size() == 3 and manifest.anchors.socket == [1.0, 2.0, 3.0],
 		"manifest preserves named parts and numeric anchors")
+	check(manifest.format_version == 2 and manifest.has("parameters"),
+		"manifest records parameter values and derivation provenance")
 
 	var glb_path := "user://polyforge_roundtrip.glb"
 	var export_error := GLTFExport.write_preserved("named_test", asset, glb_path)

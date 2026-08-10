@@ -72,7 +72,7 @@ static func data(spec: Dictionary, validation: Dictionary, outputs: Dictionary) 
 		})
 	var manifest := {
 		"format": "godot-polyforge-manifest",
-		"format_version": 1,
+		"format_version": 2,
 		"generator": "Godot PolyForge",
 		"name": spec.name,
 		"category": spec.category,
@@ -87,6 +87,7 @@ static func data(spec: Dictionary, validation: Dictionary, outputs: Dictionary) 
 			"size": bounds.size if have_bounds else Vector3.ZERO,
 		},
 		"anchors": spec.anchors,
+		"parameters": spec.parameters,
 		"metadata": spec.metadata,
 		"validation": validation,
 		"outputs": outputs,
