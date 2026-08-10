@@ -9,7 +9,8 @@ Several capabilities were copied or adapted with permission from Elliott Dehn's
 [`elliottdehn/wam`](https://github.com/elliottdehn/wam) at commit
 `0ac32d599fd8d7c954812136292a19bb0be1a965`:
 
-- `viewer/template.html` is a directly adapted copy of WAM's standalone viewer.
+- `viewer/template.html` and the installable `addons/polyforge/viewer/template.html` are
+  directly adapted copies of WAM's standalone viewer.
 - `addons/polyforge/quality/checks.gd` adapts WAM's named-part measurement,
   proximity, intersection, containment, symmetry, and regression-check concepts.
 - `addons/polyforge/core/surface_attach.gd` adapts WAM's surface-aware `on=` placement.

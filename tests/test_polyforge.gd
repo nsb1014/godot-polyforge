@@ -4,10 +4,15 @@ const PolyMesh := preload("res://addons/polyforge/core/mesh.gd")
 const SurfaceAttach := preload("res://addons/polyforge/core/surface_attach.gd")
 const Paint := preload("res://addons/polyforge/core/paint.gd")
 const Assembly := preload("res://addons/polyforge/core/assembly.gd")
+const Stock := preload("res://addons/polyforge/core/stock.gd")
+const AssetRecipe := preload("res://addons/polyforge/core/asset_recipe.gd")
 const Lint := preload("res://addons/polyforge/quality/lint_core.gd")
 const Checks := preload("res://addons/polyforge/quality/checks.gd")
 const Zone := preload("res://addons/polyforge/terrain/zone.gd")
 const ViewerExport := preload("res://addons/polyforge/exporters/viewer_export.gd")
+const GLTFExport := preload("res://addons/polyforge/exporters/gltf_export.gd")
+const ManifestExport := preload("res://addons/polyforge/exporters/manifest_export.gd")
+const BuildPipeline := preload("res://addons/polyforge/build/build_pipeline.gd")
 
 var failures := 0
 
@@ -65,6 +70,36 @@ func _initialize() -> void:
 	check(viewer.verts.size() > 0 and viewer.tris.size() > 0, "viewer export contains geometry")
 	check(viewer.bones.size() == 1 and viewer.skin.size() == viewer.verts.size() / 3,
 		"static viewer contract supplies root skin")
+
+	var stock_box := Stock.with_material(Stock.box(Vector3.ONE), _material("stock"))
+	asset.add("stock_box", stock_box, Transform3D(Basis.IDENTITY, Vector3(6.0, 0.0, 0.0)))
+	var scene := GLTFExport.scene_from_parts("named_test", asset.parts)
+	check(scene.get_node_or_null("body") != null and scene.get_node_or_null("stock_box") != null,
+		"preserved export scene keeps semantic part names")
+	scene.free()
+
+	var recipe := AssetRecipe.normalize({
+		"name": "named_test",
+		"assembly": asset,
+		"triangle_budget": 5000,
+		"anchors": {"socket": Vector3(1.0, 2.0, 3.0)},
+	})
+	var validation := BuildPipeline.validate(recipe)
+	check(validation.failures.is_empty(), "recipe passes the build validation gate")
+	var manifest := ManifestExport.data(recipe, validation, {"glb": "named_test.glb"})
+	check(manifest.parts.size() == 3 and manifest.anchors.socket == [1.0, 2.0, 3.0],
+		"manifest preserves named parts and numeric anchors")
+
+	var glb_path := "user://polyforge_roundtrip.glb"
+	var export_error := GLTFExport.write_preserved("named_test", asset, glb_path)
+	check(export_error == OK, "Godot writes preserved GLB")
+	if export_error == OK:
+		var inspection := GLTFExport.inspect(glb_path)
+		check(inspection.ok and inspection.mesh_count == 3,
+			"Godot re-imports the emitted GLB with all named meshes")
+		check(inspection.mesh_nodes.has("body") and inspection.mesh_nodes.has("stock_box"),
+			"round-trip import retains semantic node names")
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(glb_path))
 
 	print("test_polyforge: %d failures" % failures)
 	quit(1 if failures > 0 else 0)

@@ -4,8 +4,8 @@ Standalone procedural low-poly asset and environment generation for Godot 4.
 
 PolyForge builds polygonal meshes in GDScript, paints them deterministically, validates
 geometry and authored relationships, composes named assemblies, generates terrain/zones,
-and exports meshes for Godot or the bundled browser viewer. It has no game-specific palette,
-catalog, asset naming scheme, or output path.
+and compiles ordinary GLB assets through Godot itself. It has no Node, Three.js, game-specific
+palette, catalog, asset naming scheme, or output path dependency.
 
 ## Modules
 
@@ -17,12 +17,19 @@ catalog, asset naming scheme, or output path.
 | `core/density.gd` | Consumer-defined sampling profiles and triangle targets |
 | `core/palette.gd` | OKLab palette and dimension-grid snapping |
 | `core/assembly.gd` | Named subparts, local frames, intentional-overlap metadata, merge, and mirroring |
+| `core/asset_recipe.gd` | Project-owned recipe loading and normalized compiler contract |
+| `core/stock.gd` | Godot primitive and material factories for named recipes |
 | `core/surface_attach.gd` | Closest-surface placement with normal-aligned frames and inset |
 | `core/paint.gd` | Deterministic gradients, noise, streaks, bands, planks, bricks, and painted AO |
 | `quality/lint_core.gd` | Bounds, indices, degeneracy, winding, manifold, budget, attribute, and determinism checks |
 | `quality/checks.gd` | Named-part gap, intersection, burial, symmetry, ratio, and `noclip` checks |
 | `terrain/zone.gd` | Landforms, spline cuts, surface rules, and constrained deterministic scatter |
 | `exporters/viewer_export.gd` | JSON and self-contained HTML export for the bundled WebGL viewer |
+| `exporters/gltf_export.gd` | Preserved/merged GLB export and Godot round-trip inspection |
+| `exporters/manifest_export.gd` | Bounds, anchors, materials, parts, validation, and output metadata |
+| `exporters/preview_export.gd` | Godot-rendered four-view contact sheets |
+| `build/build_pipeline.gd` | Validation gate and coordinated production output |
+| `cli/polyforge_cli.gd` | Headless `build` and `inspect` commands |
 
 ## Install
 
@@ -49,6 +56,78 @@ Paint.apply(body, [
 for failure in Lint.check_polymesh(body, 2000, true):
     push_error(failure)
 ```
+
+## Compile assets offline
+
+PolyForge is a development-time dependency. Your recipe and the addon run during the build;
+the resulting GLB imports into a game like any other asset. Nothing from PolyForge needs to
+execute at game startup.
+
+```bash
+godot --path . --script res://addons/polyforge/cli/polyforge_cli.gd -- \
+  build res://examples/bronze_guardian_recipe.gd \
+  --out res://dist --mode both
+```
+
+The build produces:
+
+```text
+dist/bronze_guardian.glb                 named MeshInstance3D nodes
+dist/bronze_guardian_merged.glb          one material-batched mesh
+dist/bronze_guardian.manifest.json       parts, bounds, anchors and validation
+dist/bronze_guardian_viewer.json         browser viewer payload
+dist/bronze_guardian_viewer.html         self-contained interactive review
+dist/bronze_guardian_turntable.png       four views when rendering is available
+```
+
+Every emitted GLB is immediately imported again using Godot's `GLTFDocument`. A build fails
+if Godot cannot consume its own output. `inspect` applies the same importer to any GLB and
+reports mesh names, triangle counts, surfaces, and glTF extensions:
+
+```bash
+godot --path . --script res://addons/polyforge/cli/polyforge_cli.gd -- \
+  inspect res://dist/bronze_guardian.glb
+```
+
+### Recipe contract
+
+A project-owned recipe exposes `build()` and returns a named assembly plus optional policy:
+
+```gdscript
+extends RefCounted
+
+const Assembly := preload("res://addons/polyforge/core/assembly.gd")
+const Stock := preload("res://addons/polyforge/core/stock.gd")
+
+func build() -> Dictionary:
+    var asset := Assembly.new()
+    var steel := Stock.material("steel", Color("68635f"), 0.6, 0.7)
+    asset.add("body", Stock.with_material(Stock.box(Vector3.ONE), steel))
+    return {
+        "name": "crate",
+        "category": "prop",
+        "assembly": asset,
+        "triangle_budget": 1000,
+        "checks": [],
+        "anchors": {"top": Vector3(0, 0.5, 0)},
+        "front": "+Z",
+    }
+```
+
+See `examples/bronze_guardian_recipe.gd` for a multi-part model and `llms.txt` for the compact
+agent authoring contract.
+
+### Preserved versus merged GLB
+
+- `--mode preserve` keeps one named node per `Assembly` part. Use this when a game needs to
+  find a door, turret, hand, socket, or other movable semantic component.
+- `--mode merge` batches all parts by material into one mesh for static runtime assets.
+- `--mode both` writes both versions so authoring and deployment can choose independently.
+
+Builds stop before export on malformed geometry, budget overruns, failed semantic rules, or
+requested `noclip` failures. `--force` writes diagnostic artifacts while keeping failures in
+the manifest. A renderer running in dummy headless mode may not support PNG output; this is
+reported as a warning because the self-contained viewer still provides interactive review.
 
 ## Named assemblies and semantic checks
 
@@ -78,7 +157,7 @@ See `examples/generate_zone.gd`.
 
 ## Browser viewer
 
-Open `viewer/template.html` and drop a generated `*_viewer.json`, or use
+Open `addons/polyforge/viewer/template.html` and drop a generated `*_viewer.json`, or use
 `ViewerExport.write_embedded_html()` to create a self-contained review page.
 
 ## Validation
