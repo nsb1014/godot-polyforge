@@ -13,7 +13,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: arcane-pumpjack-reference-test
+  group: arcane-pumpjack-reference-probes-v2
   cancel-in-progress: true
 
 jobs:
@@ -51,7 +51,7 @@ jobs:
         id: geometry
         continue-on-error: true
         run: |
-          timeout 120s "$GODOT_BIN" --headless --path . \
+          timeout --kill-after=15s 120s "$GODOT_BIN" --headless --path . \
             --script res://addons/polyforge/cli/polyforge_cli.gd -- \
             build res://examples/arcane_pumpjack_recipe.gd \
             --out res://dist/geometry --no-glb --no-viewer --no-preview --no-readability
@@ -60,7 +60,7 @@ jobs:
         id: base_render
         continue-on-error: true
         run: |
-          timeout 180s xvfb-run -a "$GODOT_BIN" --path . \
+          timeout --kill-after=15s 180s xvfb-run -a "$GODOT_BIN" --path . \
             --script res://addons/polyforge/cli/polyforge_cli.gd -- \
             build res://examples/arcane_pumpjack_recipe.gd \
             --out res://dist/base --mode both --no-sweep
@@ -69,7 +69,7 @@ jobs:
         id: sweep_render
         continue-on-error: true
         run: |
-          timeout 300s xvfb-run -a "$GODOT_BIN" --path . \
+          timeout --kill-after=15s 300s xvfb-run -a "$GODOT_BIN" --path . \
             --script res://addons/polyforge/cli/polyforge_cli.gd -- \
             build res://examples/arcane_pumpjack_recipe.gd \
             --out res://dist/sweep --no-glb --no-viewer --no-preview
@@ -77,7 +77,7 @@ jobs:
       - name: Run PolyForge runtime tests
         id: regression
         continue-on-error: true
-        run: 'timeout 180s "$GODOT_BIN" --headless --path . --script res://tests/test_polyforge.gd'
+        run: 'timeout --kill-after=15s 180s "$GODOT_BIN" --headless --path . --script res://tests/test_polyforge.gd'
 
       - name: Upload model, viewer, manifest, and render
         uses: actions/upload-artifact@v4
