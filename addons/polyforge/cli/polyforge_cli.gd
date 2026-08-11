@@ -18,9 +18,11 @@ func _initialize() -> void:
 func _usage() -> void:
 	print("PolyForge — Godot-native procedural asset compiler")
 	print("  build <recipe.gd> [--out DIR] [--mode preserve|merge|both]")
-	print("                    [--param NAME=NUMBER] [--sweep-param NAME] [--no-sweep]")
+	print("                    [--param NAME=NUMBER] [--sweep-param NAME]")
+	print("                    [--sweep-mode single|pairwise] [--sweep-limit NUMBER] [--no-sweep]")
 	print("                    [--viewer-template FILE]")
-	print("                    [--no-glb] [--no-viewer] [--no-preview] [--force]")
+	print("                    [--no-glb] [--no-viewer] [--no-preview] [--no-readability]")
+	print("                    [--no-sweep-readability] [--force]")
 	print("  inspect <asset.glb>")
 
 func _set_parameter(parsed: Dictionary, assignment: String) -> void:
@@ -34,7 +36,8 @@ func _set_parameter(parsed: Dictionary, assignment: String) -> void:
 
 func _parse_build(args: PackedStringArray) -> Dictionary:
 	var parsed := {"recipe": "", "options": BuildPipeline.default_options(),
-		"parameters": {}, "sweep": true, "sweep_parameters": PackedStringArray()}
+		"parameters": {}, "sweep": true, "sweep_parameters": PackedStringArray(),
+		"sweep_mode": "pairwise", "sweep_limit": 128}
 	var i := 0
 	while i < args.size():
 		var arg := args[i]
@@ -49,6 +52,16 @@ func _parse_build(args: PackedStringArray) -> Dictionary:
 				parsed.sweep_parameters.append(args[i])
 			"--no-sweep":
 				parsed.sweep = false
+			"--sweep-mode":
+				i += 1
+				assert(i < args.size() and args[i] in ["single", "pairwise"],
+					"--sweep-mode needs single or pairwise")
+				parsed.sweep_mode = args[i]
+			"--sweep-limit":
+				i += 1
+				assert(i < args.size() and args[i].is_valid_int() and args[i].to_int() > 0,
+					"--sweep-limit needs a positive integer")
+				parsed.sweep_limit = args[i].to_int()
 			"--out":
 				i += 1
 				assert(i < args.size(), "--out needs a directory")
@@ -67,6 +80,10 @@ func _parse_build(args: PackedStringArray) -> Dictionary:
 				parsed.options.write_viewer = false
 			"--no-preview":
 				parsed.options.write_preview = false
+			"--no-readability":
+				parsed.options.measure_readability = false
+			"--no-sweep-readability":
+				parsed.options.measure_sweep_readability = false
 			"--force":
 				parsed.options.force = true
 			_:
@@ -103,7 +120,8 @@ func _run() -> void:
 			var spec := AssetRecipe.load_file(parsed.recipe, parsed.parameters)
 			if parsed.sweep:
 				parsed.options.sweep_specs = AssetRecipe.load_sweep(
-					parsed.recipe, parsed.parameters, parsed.sweep_parameters)
+					parsed.recipe, parsed.parameters, parsed.sweep_parameters,
+					parsed.sweep_mode == "pairwise", parsed.sweep_limit)
 			var result := await BuildPipeline.run(self, spec, parsed.options)
 			_print_build_result(result)
 			quit(0 if result.ok else 1)

@@ -53,9 +53,16 @@ Godot before the build succeeds.
 - Use `p.derive(name, source, factor)` for simple ratios and `p.computed()` for multi-source values.
 - Never type a coordinate that describes a relationship; calculate it from the geometry or
   dimension it must meet.
-- Let the default min/base/max parameter sweep run before accepting an asset.
+- Let the default base, per-parameter boundary, and pairwise-boundary sweep run before accepting
+  an asset.
+- Keep pairwise sweeps enabled so boundary interactions between two measurements are exercised.
 - Add `Checks.require_axis_size()` assertions proving important dimensions reached the mesh.
-- Derive anchors and attachment positions from the geometry they describe.
+- Derive anchors and attachment positions from the geometry they describe. Use
+  `Attachments.surface()` when a relationship lands on an emitted host surface, and return its
+  snapshot as `attachments` in the recipe.
+- Keep play-size readability enabled. Treat color regions, background contrast, and typical
+  feature thickness as measured outputs, not judgments made from the full-size preview. Keep
+  sweep readability enabled for final validation.
 - Use `--mode preserve` for movable/addressable parts, `merge` for static batching, or
   `both` when authoring and runtime needs differ.
 - Add structural and semantic checks before increasing detail.
@@ -70,8 +77,10 @@ Godot before the build succeeds.
 - `core/stock.gd`: named-recipe-friendly Godot primitive factories.
 - `core/mesh.gd`: lathes, extrusions, sweeps, heightfields, painting, and tagged surfaces.
 - `core/assembly.gd`: names, frames, transforms, overlap declarations, and merging.
+- `core/attachments.gd`: sampled surface frames, child bindings, and attachment drift checks.
 - `quality/lint_core.gd`: structural geometry validation and budgets.
 - `quality/checks.gd`: named-part relationships and intersection checks.
+- `quality/readability.gd`: rendered play-size legibility metrics and category policy.
 - `exporters/gltf_export.gd`: preserved/merged GLB and Godot round-trip inspection.
 - `exporters/manifest_export.gd`: bounds, anchors, part names, materials, and outputs.
 

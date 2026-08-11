@@ -123,17 +123,21 @@ func snapshot() -> Dictionary:
 	}
 
 static func sweep_cases(raw_schema: Dictionary, base_overrides := {},
-		selected := PackedStringArray()) -> Array[Dictionary]:
-	var cases: Array[Dictionary] = [{"label": "base", "overrides": base_overrides.duplicate(true)}]
+		selected := PackedStringArray(), include_interactions := true,
+		max_cases := 128) -> Array[Dictionary]:
+	var cases: Array[Dictionary] = [{"label": "base",
+		"overrides": base_overrides.duplicate(true), "varied": PackedStringArray()}]
 	var names := PackedStringArray()
 	if selected.is_empty():
 		for raw_name in raw_schema:
 			names.append(str(raw_name))
 	else:
 		names = selected.duplicate()
+	names.sort()
 	for name in names:
 		if not raw_schema.has(name):
-			cases.append({"label": name + "=unknown", "overrides": {name: NAN}})
+			cases.append({"label": name + "=unknown", "overrides": {name: NAN},
+				"varied": PackedStringArray([name])})
 			continue
 		var entry := _normalized_entry(name, raw_schema[name])
 		for bound in ["minimum", "maximum"]:
@@ -141,5 +145,36 @@ static func sweep_cases(raw_schema: Dictionary, base_overrides := {},
 				continue
 			var candidate := base_overrides.duplicate(true)
 			candidate[name] = float(entry[bound])
-			cases.append({"label": "%s=%s" % [name, bound], "overrides": candidate})
+			cases.append({"label": "%s=%s" % [name, bound], "overrides": candidate,
+				"varied": PackedStringArray([name])})
+	if include_interactions:
+		for first_index in range(names.size()):
+			var first := names[first_index]
+			if not raw_schema.has(first):
+				continue
+			var first_entry := _normalized_entry(first, raw_schema[first])
+			for second_index in range(first_index + 1, names.size()):
+				var second := names[second_index]
+				if not raw_schema.has(second):
+					continue
+				var second_entry := _normalized_entry(second, raw_schema[second])
+				for first_bound in ["minimum", "maximum"]:
+					if not first_entry.has(first_bound) or not _finite_number(first_entry[first_bound]):
+						continue
+					for second_bound in ["minimum", "maximum"]:
+						if not second_entry.has(second_bound) or not _finite_number(second_entry[second_bound]):
+							continue
+						var candidate := base_overrides.duplicate(true)
+						candidate[first] = float(first_entry[first_bound])
+						candidate[second] = float(second_entry[second_bound])
+						cases.append({
+							"label": "%s=%s,%s=%s" % [first, first_bound, second, second_bound],
+							"overrides": candidate,
+							"varied": PackedStringArray([first, second]),
+						})
+	var generated_count := cases.size()
+	cases[0]["plan"] = {"generated_cases": generated_count,
+		"case_limit": maxi(1, max_cases), "truncated": generated_count > maxi(1, max_cases)}
+	if generated_count > maxi(1, max_cases):
+		cases.resize(maxi(1, max_cases))
 	return cases
