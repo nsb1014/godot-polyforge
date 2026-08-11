@@ -1,0 +1,82 @@
+name: Arcane pumpjack reference test
+
+on:
+  pull_request:
+    paths:
+      - "addons/polyforge/**"
+      - "examples/arcane_pumpjack_recipe.gd"
+      - "tests/**"
+      - ".github/workflows/arcane-pumpjack-test.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-measure:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      GODOT_VERSION: "4.4.1"
+      GODOT_BIN: ${{ github.workspace }}/.godot-bin/godot
+      LIBGL_ALWAYS_SOFTWARE: "1"
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install virtual display and Godot runtime libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            curl unzip xvfb libgl1 libx11-6 libxcursor1 libxinerama1 \
+            libxrandr2 libxi6 libasound2t64 libpulse0
+
+      - name: Install pinned Godot editor
+        run: |
+          mkdir -p "$(dirname "$GODOT_BIN")"
+          curl --fail --location --retry 3 \
+            "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip" \
+            --output /tmp/godot.zip
+          unzip -q /tmp/godot.zip -d "$(dirname "$GODOT_BIN")"
+          mv "$(dirname "$GODOT_BIN")/Godot_v${GODOT_VERSION}-stable_linux.x86_64" "$GODOT_BIN"
+          chmod +x "$GODOT_BIN"
+          "$GODOT_BIN" --version
+
+      - name: Run PolyForge runtime tests
+        run: '"$GODOT_BIN" --headless --path . --script res://tests/test_polyforge.gd'
+
+      - name: Build and render the reference asset
+        id: build
+        shell: bash
+        run: |
+          set +e
+          xvfb-run -a "$GODOT_BIN" --path . \
+            --script res://addons/polyforge/cli/polyforge_cli.gd -- \
+            build res://examples/arcane_pumpjack_recipe.gd \
+            --out res://dist --mode both
+          build_status=$?
+          if [ "$build_status" -ne 0 ]; then
+            echo "Strict build failed; producing diagnostic artifacts with --force."
+            xvfb-run -a "$GODOT_BIN" --path . \
+              --script res://addons/polyforge/cli/polyforge_cli.gd -- \
+              build res://examples/arcane_pumpjack_recipe.gd \
+              --out res://dist --mode both --force
+          fi
+          echo "strict_status=$build_status" >> "$GITHUB_OUTPUT"
+          exit "$build_status"
+
+      - name: Upload model, viewer, manifest, and render
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: arcane-pumpjack-polyforge
+          path: |
+            dist/arcane_pumpjack.glb
+            dist/arcane_pumpjack_merged.glb
+            dist/arcane_pumpjack.manifest.json
+            dist/arcane_pumpjack_viewer.json
+            dist/arcane_pumpjack_viewer.html
+            dist/arcane_pumpjack_turntable.png
+          if-no-files-found: warn
+          retention-days: 14
