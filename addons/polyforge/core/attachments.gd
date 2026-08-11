@@ -69,8 +69,12 @@ static func validate(target_assembly, snapshot: Dictionary) -> Dictionary:
 			failures.append("attachment %s host no longer has a triangle surface" % name)
 			continue
 		var tolerance := maxf(float(record.get("position_tolerance", 0.0001)), 0.0000001)
-		var sample_drift := hit.position.distance_to(record.position)
-		var normal_dot := hit.normal.dot(record.normal)
+		var sampled_position: Vector3 = hit.position
+		var recorded_position: Vector3 = record.position
+		var sampled_normal: Vector3 = hit.normal
+		var recorded_normal: Vector3 = record.normal
+		var sample_drift: float = sampled_position.distance_to(recorded_position)
+		var normal_dot: float = sampled_normal.dot(recorded_normal)
 		var hint_distance := float(hit.distance)
 		measurements.append({
 			"attachment": name,
@@ -93,7 +97,9 @@ static func validate(target_assembly, snapshot: Dictionary) -> Dictionary:
 			if child == null:
 				failures.append("attachment %s names missing child %s" % [name, child_name])
 			else:
-				var child_distance := child.transform.origin.distance_to(record.frame.origin)
+				var child_transform: Transform3D = child.transform
+				var recorded_frame: Transform3D = record.frame
+				var child_distance: float = child_transform.origin.distance_to(recorded_frame.origin)
 				measurements[-1]["child_distance"] = child_distance
 				if child_distance > tolerance:
 					failures.append("attachment %s child %s moved %.6f from sampled frame" % [
