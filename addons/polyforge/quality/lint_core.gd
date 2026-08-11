@@ -111,7 +111,10 @@ static func check_mesh(mesh: Mesh, tri_budget: int = -1) -> PackedStringArray:
 		fails.append("empty mesh")
 		return fails
 	for si in range(mesh.get_surface_count()):
-		if mesh.surface_get_primitive_type(si) != Mesh.PRIMITIVE_TRIANGLES:
+		# Godot 4.4 exposes this query on ArrayMesh but not stock PrimitiveMesh
+		# subclasses. PrimitiveMesh surfaces are triangle lists by contract.
+		if mesh is ArrayMesh and \
+				(mesh as ArrayMesh).surface_get_primitive_type(si) != Mesh.PRIMITIVE_TRIANGLES:
 			fails.append("surface %d is not a triangle list" % si)
 			continue
 		var arr: Array = mesh.surface_get_arrays(si)
