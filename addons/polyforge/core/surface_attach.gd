@@ -64,7 +64,8 @@ static func closest_point(mesh: Mesh, approximate_position: Vector3,
 	if mesh == null:
 		return best
 	for si in range(mesh.get_surface_count()):
-		if mesh.surface_get_primitive_type(si) != Mesh.PRIMITIVE_TRIANGLES:
+		if mesh is ArrayMesh and \
+				(mesh as ArrayMesh).surface_get_primitive_type(si) != Mesh.PRIMITIVE_TRIANGLES:
 			continue
 		var arr := mesh.surface_get_arrays(si)
 		var verts: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
