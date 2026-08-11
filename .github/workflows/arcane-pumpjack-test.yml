@@ -46,9 +46,6 @@ jobs:
           chmod +x "$GODOT_BIN"
           "$GODOT_BIN" --version
 
-      - name: Run PolyForge runtime tests
-        run: '"$GODOT_BIN" --headless --path . --script res://tests/test_polyforge.gd'
-
       - name: Build and render the reference asset
         id: build
         shell: bash
@@ -68,6 +65,10 @@ jobs:
           fi
           echo "strict_status=$build_status" >> "$GITHUB_OUTPUT"
           exit "$build_status"
+
+      - name: Run PolyForge runtime tests
+        if: always()
+        run: 'timeout 180s "$GODOT_BIN" --headless --path . --script res://tests/test_polyforge.gd'
 
       - name: Upload model, viewer, manifest, and render
         if: always()
