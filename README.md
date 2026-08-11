@@ -7,6 +7,9 @@ geometry and authored relationships, composes named assemblies, generates terrai
 and compiles ordinary GLB assets through Godot itself. It has no Node, Three.js, game-specific
 palette, catalog, asset naming scheme, or output path dependency.
 
+`examples/arcane_pumpjack_recipe.gd` is the vapor-derrick reliability reference for reusable
+components, scoped symmetry, classified surfaces, interaction sweeps, and octant rendering.
+
 ## Modules
 
 | Path | Purpose |
