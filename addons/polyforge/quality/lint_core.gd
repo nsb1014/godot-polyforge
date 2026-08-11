@@ -7,7 +7,7 @@ extends RefCounted
 
 const AREA_EPSILON := 0.0000000001
 
-static func triangle_count(mesh: ArrayMesh) -> int:
+static func triangle_count(mesh: Mesh) -> int:
 	if mesh == null:
 		return 0
 	var total := 0
@@ -105,7 +105,7 @@ static func check_polymesh(poly, tri_budget: int = -1, require_closed := false) 
 
 ## Structural checks on emitted ArrayMesh data. Indexed and unindexed triangle surfaces
 ## are supported. Open surfaces are valid; use check_polymesh(..., true) for closed solids.
-static func check_mesh(mesh: ArrayMesh, tri_budget: int = -1) -> PackedStringArray:
+static func check_mesh(mesh: Mesh, tri_budget: int = -1) -> PackedStringArray:
 	var fails := PackedStringArray()
 	if mesh == null or mesh.get_surface_count() == 0:
 		fails.append("empty mesh")

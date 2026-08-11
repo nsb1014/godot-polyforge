@@ -1,0 +1,83 @@
+# Godot PolyForge — agent instructions
+
+PolyForge is a Godot 4 development-time asset compiler. Geometry is authored in GDScript,
+validated, previewed, and exported as ordinary GLB files. The addon does not need to ship
+with the game that consumes those files.
+
+## Build an asset
+
+Read `examples/bronze_guardian_recipe.gd`, then create a project-owned recipe with:
+
+```gdscript
+extends RefCounted
+const Assembly := preload("res://addons/polyforge/core/assembly.gd")
+const Parameters := preload("res://addons/polyforge/core/parameters.gd")
+const Stock := preload("res://addons/polyforge/core/stock.gd")
+
+func parameters() -> Dictionary:
+	return {"height": Parameters.scale(1.0, 0.5, 2.0, "m", "Canonical height")}
+
+func build(p) -> Dictionary:
+	var height := p.value("height")
+	var asset := Assembly.new()
+	# asset.add("semantic_name", mesh, transform, {"tags": [...]})
+	return {
+		"name": "my_asset",
+		"category": "prop",
+		"assembly": asset,
+		"triangle_budget": 4000,
+		"checks": [],
+		"anchors": {},
+		"front": "+Z",
+	}
+```
+
+Compile it with Godot, not Node:
+
+```bash
+godot --path . --script res://addons/polyforge/cli/polyforge_cli.gd -- \
+  build res://models/my_asset.gd --param height=1.4 --out res://dist --mode both
+```
+
+Outputs are GLB, manifest JSON, self-contained review HTML/JSON, and a four-view PNG when
+the selected Godot renderer supports offscreen rendering. Every GLB is re-imported through
+Godot before the build succeeds.
+
+## Rules
+
+- +Y is up. Declare `front` explicitly; bundled examples use +Z.
+- Give every independently meaningful part a stable semantic name.
+- Declare a small set of bounded primary measurements with `parameters()`; use
+  `Parameters.scale()` for the canonical uniform asset size.
+- Express each physical dimension against the closest measurement belonging to the same part.
+- Use `p.derive(name, source, factor)` for simple ratios and `p.computed()` for multi-source values.
+- Never type a coordinate that describes a relationship; calculate it from the geometry or
+  dimension it must meet.
+- Let the default min/base/max parameter sweep run before accepting an asset.
+- Add `Checks.require_axis_size()` assertions proving important dimensions reached the mesh.
+- Derive anchors and attachment positions from the geometry they describe.
+- Use `--mode preserve` for movable/addressable parts, `merge` for static batching, or
+  `both` when authoring and runtime needs differ.
+- Add structural and semantic checks before increasing detail.
+- Declare intentional intersections with `Assembly.allow_overlap()` before enabling
+  `noclip` in the recipe.
+- Keep palettes, categories, density profiles, and output directories project-owned.
+- Inspect all four views. A correct canonical view does not prove the back and sides exist.
+- Do not generate procedural geometry at game startup. Import the compiled GLB.
+
+## Useful modules
+
+- `core/stock.gd`: named-recipe-friendly Godot primitive factories.
+- `core/mesh.gd`: lathes, extrusions, sweeps, heightfields, painting, and tagged surfaces.
+- `core/assembly.gd`: names, frames, transforms, overlap declarations, and merging.
+- `quality/lint_core.gd`: structural geometry validation and budgets.
+- `quality/checks.gd`: named-part relationships and intersection checks.
+- `exporters/gltf_export.gd`: preserved/merged GLB and Godot round-trip inspection.
+- `exporters/manifest_export.gd`: bounds, anchors, part names, materials, and outputs.
+
+Inspect an existing file:
+
+```bash
+godot --path . --script res://addons/polyforge/cli/polyforge_cli.gd -- \
+  inspect res://dist/my_asset.glb
+```

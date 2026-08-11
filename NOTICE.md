@@ -9,7 +9,8 @@ Several capabilities were copied or adapted with permission from Elliott Dehn's
 [`elliottdehn/wam`](https://github.com/elliottdehn/wam) at commit
 `0ac32d599fd8d7c954812136292a19bb0be1a965`:
 
-- `viewer/template.html` is a directly adapted copy of WAM's standalone viewer.
+- `viewer/template.html` and the installable `addons/polyforge/viewer/template.html` are
+  directly adapted copies of WAM's standalone viewer.
 - `addons/polyforge/quality/checks.gd` adapts WAM's named-part measurement,
   proximity, intersection, containment, symmetry, and regression-check concepts.
 - `addons/polyforge/core/surface_attach.gd` adapts WAM's surface-aware `on=` placement.
@@ -24,3 +25,12 @@ The repository owner has represented that permission was granted by WAM's owner 
 modify, and use these materials. No upstream WAM license file was present at the pinned
 commit. This notice records provenance and credit. Repository-wide terms are in `LICENSE`;
 the WAM-derived portions are included under the separate permission described above.
+
+## Design reference
+
+The dimension-driven recipe workflow added to `core/parameters.gd` was independently
+implemented in GDScript after studying the public documentation and unminified source of
+[`antics-modelkit`](https://antics.gg/modelkit), version 0.11.1, by the Antics team. Its
+principles of naming dimensions, deriving relational coordinates, measuring emitted geometry,
+and running checks automatically informed the design. No ModelKit source code or proportion
+table is copied into this repository. ModelKit is distributed under the MIT License.
