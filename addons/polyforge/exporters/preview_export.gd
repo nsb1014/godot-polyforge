@@ -130,6 +130,7 @@ static func _measure_visibility(viewport: SubViewport, instances: Array[MeshInst
 	var palette := [Color.RED, Color.LIME, Color.BLUE, Color.YELLOW,
 		Color.MAGENTA, Color.CYAN, Color("ff7f00"), Color("7fff00")]
 	var by_name := {}
+	var groups := {}
 	var original_visibility := {}
 	var original_materials := {}
 	var blocker_material := _id_material(Color.BLACK)
@@ -142,10 +143,15 @@ static func _measure_visibility(viewport: SubViewport, instances: Array[MeshInst
 	var names := critical.keys()
 	for index in range(names.size()):
 		var name := str(names[index])
-		if by_name.has(name):
-			var node: MeshInstance3D = by_name[name]
-			node.visible = true
-			node.material_override = _id_material(palette[index % palette.size()])
+		var rule = critical[name]
+		var member_names = rule.get("members", [name]) if rule is Dictionary else [name]
+		var members: Array[MeshInstance3D] = []
+		for member_name in member_names:
+			if by_name.has(str(member_name)):
+				members.append(by_name[str(member_name)])
+				by_name[str(member_name)].material_override = _id_material(
+					palette[index % palette.size()])
+		groups[name] = members
 	var combined := await _capture(viewport)
 	var reports := {}
 	var issues := PackedStringArray()
@@ -154,17 +160,14 @@ static func _measure_visibility(viewport: SubViewport, instances: Array[MeshInst
 		var rule = critical[name]
 		if not Readability.view_is_required(rule, yaw):
 			continue
-		if not by_name.has(name):
+		var members: Array[MeshInstance3D] = groups[name]
+		if members.is_empty():
 			reports[name] = {"visible_fraction": 0.0, "visible_pixels": 0,
 				"potential_pixels": 0, "ok": false}
 			issues.append("critical part %s is missing" % name)
 			continue
-		for other_name in names:
-			if by_name.has(str(other_name)):
-				by_name[str(other_name)].visible = str(other_name) == name
 		for instance in instances:
-			if not critical.has(str(instance.name)):
-				instance.visible = false
+			instance.visible = members.has(instance)
 		var isolated := await _capture(viewport)
 		var color: Color = palette[index % palette.size()]
 		var visible_pixels := _count_color(combined, color)
