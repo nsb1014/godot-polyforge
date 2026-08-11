@@ -91,6 +91,10 @@ func _initialize() -> void:
 	asset.add("mirror", mirrored, Transform3D(Basis.IDENTITY, Vector3(3.0, 0.0, 0.0)))
 	var result := Checks.evaluate(asset.parts, [Checks.require_gap("body", "mirror", 0.5)])
 	check(result.failures.is_empty(), "named gap check passes separated parts")
+	var depth_result := Checks.evaluate(asset.parts, [
+		Checks.require_axis_range("body", 2, 0.5, 3.0)])
+	check(depth_result.failures.is_empty(),
+		"named axis-range checks reject accidentally flattened geometry")
 	check(Checks.noclip(asset.parts).is_empty(), "noclip passes separated parts")
 
 	var spec := Zone.Spec.new(Vector2(20.0, 16.0), Vector2i(12, 10), 5)

@@ -163,6 +163,11 @@ static func require_axis_size(part: String, axis: int, target: float,
 	return {"type": "axis_size", "a": part, "axis": axis,
 		"target": target, "tolerance": tolerance}
 
+static func require_axis_range(part: String, axis: int, minimum: float,
+		maximum := INF) -> Dictionary:
+	return {"type": "axis_range", "a": part, "axis": axis,
+		"minimum": minimum, "maximum": maximum}
+
 static func measure(cache: Dictionary, rule: Dictionary) -> Dictionary:
 	var kind: String = rule.type
 	if kind == "gap":
@@ -176,7 +181,7 @@ static func measure(cache: Dictionary, rule: Dictionary) -> Dictionary:
 	if kind == "axis_ratio":
 		var denom := axis_size(cache[rule.b], rule.b_axis)
 		return {"value": axis_size(cache[rule.a], rule.a_axis) / maxf(denom, 0.000000001), "unit": "ratio"}
-	if kind == "axis_size":
+	if kind == "axis_size" or kind == "axis_range":
 		return {"value": axis_size(cache[rule.a], rule.axis), "unit": "distance"}
 	return {"value": null, "unit": "unknown"}
 
@@ -211,6 +216,10 @@ static func evaluate(parts: Array, rules: Array) -> Dictionary:
 				if absf(result.value - rule.target) > rule.tolerance:
 					failures.append("%s axis %d size %.6f differs from %.6f by more than %.6f" % [
 						rule.a, rule.axis, result.value, rule.target, rule.tolerance])
+			"axis_range":
+				if result.value < rule.minimum or result.value > rule.maximum:
+					failures.append("%s axis %d size %.6f outside %.6f..%.6f" % [
+						rule.a, rule.axis, result.value, rule.minimum, rule.maximum])
 			_:
 				failures.append("unknown semantic check type: " + str(rule.type))
 	return {"failures": failures, "measurements": measurements, "cache": cache}

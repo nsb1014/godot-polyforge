@@ -48,6 +48,10 @@ func _add_pipe(asset, name: String, points: Array, radius: float,
 		asset.add("%s_%02d" % [name, i],
 			_part(Stock.cylinder(radius, radius, a.distance_to(b), 10), material),
 			_between_y(a, b), {"tags": ["pipe", "arcane"]})
+		if i > 0:
+			asset.add("%s_elbow_%02d" % [name, i],
+				_part(Stock.sphere(radius * 1.35, 10, 5), material),
+				_xf(a), {"tags": ["pipe", "arcane", "elbow"]})
 
 func parameters() -> Dictionary:
 	return {
@@ -78,7 +82,7 @@ func build(p) -> Dictionary:
 		deck_y + tank_radius * 1.18, ["platform.deck_y", "tank.radius"],
 		"platform.deck_y + tank.radius * 1.18")
 	var pipe_radius: float = p.derive("pipe.radius", "size", 0.025)
-	var frame_depth: float = p.derive("frame.depth", "size", 0.105)
+	var frame_depth: float = p.derive("frame.depth", "size", 0.22)
 
 	var sand := Stock.material("sandstone_metal", Color("b58a55"), 0.52, 0.68)
 	var sand_light := Stock.material("sandstone_trim", Color("d2aa70"), 0.44, 0.56)
@@ -114,49 +118,69 @@ func build(p) -> Dictionary:
 
 	# A-frame tower, duplicated in depth so the side views retain a readable load-bearing cage.
 	for side_z in [-1.0, 1.0]:
-		var z: float = float(side_z) * frame_depth * 0.5
+		var z: float = float(side_z) * frame_depth * 0.42
 		_add_beam(asset, "tower_leg_left_%s" % ("front" if side_z > 0.0 else "back"),
 			Vector3(-size * 0.20, deck_y + size * 0.03, z),
 			Vector3(-size * 0.025, tower_pivot_y, z), size * 0.055,
-			size * 0.06, sand, ["tower", "brace"])
+			size * 0.045, sand, ["tower", "brace"])
 		_add_beam(asset, "tower_leg_right_%s" % ("front" if side_z > 0.0 else "back"),
 			Vector3(size * 0.22, deck_y + size * 0.03, z),
 			Vector3(size * 0.025, tower_pivot_y, z), size * 0.055,
-			size * 0.06, sand, ["tower", "brace"])
+			size * 0.045, sand, ["tower", "brace"])
 		_add_beam(asset, "tower_cross_%s" % ("front" if side_z > 0.0 else "back"),
 			Vector3(-size * 0.14, deck_y + size * 0.22, z),
 			Vector3(size * 0.14, deck_y + size * 0.22, z), size * 0.045,
-			size * 0.055, dark, ["tower", "brace"])
+			size * 0.04, dark, ["tower", "brace"])
+	for spreader_index in range(2):
+		asset.add("tower_depth_spreader_%02d" % spreader_index,
+			_part(Stock.box(Vector3(size * 0.07, size * 0.06, frame_depth)), sand_light),
+			_xf(Vector3(0.0, deck_y + size * (0.20 + spreader_index * 0.39), 0.0)),
+			{"tags": ["tower", "depth_brace"]})
 	asset.add("tower_pivot", _part(Stock.cylinder(size * 0.095, size * 0.095,
-		frame_depth * 1.55, 16), sand_light),
+		frame_depth * 1.12, 16), sand_light),
 		_xf(Vector3(0.0, tower_pivot_y, 0.0), Vector3(90.0, 0.0, 0.0)),
 		{"tags": ["joint"]})
 	asset.add("tower_pivot_core", _part(Stock.cylinder(size * 0.060, size * 0.060,
-		frame_depth * 1.72, 16), arcane),
+		frame_depth * 1.20, 16), arcane),
 		_xf(Vector3(0.0, tower_pivot_y, 0.0), Vector3(90.0, 0.0, 0.0)),
 		{"tags": ["joint", "arcane"]})
 
 	var boom_left := Vector3(-boom_length * 0.54, tower_pivot_y + size * 0.13, 0.0)
 	var boom_right := Vector3(boom_length * 0.46, tower_pivot_y - size * 0.055, 0.0)
 	_add_beam(asset, "walking_beam", boom_left, boom_right, size * 0.105,
-		frame_depth, sand, ["boom", "moving"])
-	_add_beam(asset, "walking_beam_inset", boom_left + Vector3(size * 0.045, 0.0, frame_depth * 0.57),
-		boom_right - Vector3(size * 0.045, 0.0, -frame_depth * 0.57),
-		size * 0.035, size * 0.018, dark, ["boom", "trim"])
+		frame_depth * 0.50, dark, ["boom", "moving", "spine"])
+	for rail_side in [-1.0, 1.0]:
+		var rail_z: float = float(rail_side) * frame_depth * 0.38
+		_add_beam(asset, "walking_beam_%s" % ("front" if rail_side > 0.0 else "back"),
+			boom_left + Vector3(size * 0.025, 0.0, rail_z),
+			boom_right - Vector3(size * 0.025, 0.0, -rail_z),
+			size * 0.072, size * 0.045, sand, ["boom", "moving", "rail"])
+	for rib_index in range(3):
+		var rib_t := float(rib_index + 1) / 4.0
+		var rib_center := boom_left.lerp(boom_right, rib_t)
+		asset.add("walking_beam_depth_rib_%02d" % rib_index,
+			_part(Stock.box(Vector3(size * 0.055, size * 0.09, frame_depth * 0.86)), sand_light),
+			_xf(rib_center, Vector3(0.0, 0.0,
+				rad_to_deg(atan2(boom_right.y - boom_left.y, boom_right.x - boom_left.x)))),
+			{"tags": ["boom", "depth_brace"]})
 	var horsehead_center := boom_left + Vector3(-size * 0.015, -size * 0.015,
-		frame_depth * 0.06)
+		0.0)
 	asset.add("horsehead", _part(Stock.capsule(size * 0.115, size * 0.50,
 		12, 6), sand_light), _xf(horsehead_center, Vector3(0.0, 0.0, -9.0),
-		Vector3(0.72, 1.0, 0.72)), {"tags": ["boom", "moving"]})
+		Vector3(0.72, 1.0, 0.98)), {"tags": ["boom", "moving"]})
 	asset.add("horsehead_face", _part(Stock.capsule(size * 0.075, size * 0.42,
-		12, 6), sand), _xf(horsehead_center + Vector3(0.0, 0.0, frame_depth * 0.48),
+		12, 6), sand), _xf(horsehead_center + Vector3(0.0, 0.0, frame_depth * 0.38),
+		Vector3(0.0, 0.0, -9.0), Vector3(0.70, 1.0, 0.40)),
+		{"tags": ["boom", "trim"]})
+	asset.add("horsehead_back", _part(Stock.capsule(size * 0.075, size * 0.42,
+		12, 6), sand), _xf(horsehead_center - Vector3(0.0, 0.0, frame_depth * 0.38),
 		Vector3(0.0, 0.0, -9.0), Vector3(0.70, 1.0, 0.40)),
 		{"tags": ["boom", "trim"]})
 	for accent_index in range(3):
 		asset.add("horsehead_arcane_%02d" % accent_index,
 			_part(Stock.box(Vector3(size * 0.075, size * 0.035, size * 0.018)), arcane),
 			_xf(horsehead_center + Vector3(0.0, size * (0.105 - accent_index * 0.105),
-				frame_depth * 0.76), Vector3(0.0, 0.0, -9.0)),
+				frame_depth * 0.60), Vector3(0.0, 0.0, -9.0)),
 			{"tags": ["arcane", "accent"]})
 
 	# Polish rod and lower linkage make the extreme boom-reach sweep geometrically meaningful.
@@ -165,11 +189,11 @@ func build(p) -> Dictionary:
 	var rod_bottom := deck_y + size * 0.20
 	asset.add("polish_rod", _part(Stock.cylinder(size * 0.025, size * 0.025,
 		rod_top - rod_bottom, 10), steel),
-		_xf(Vector3(rod_x, (rod_top + rod_bottom) * 0.5, 0.0)),
+		_xf(Vector3(rod_x, (rod_top + rod_bottom) * 0.5, frame_depth * 0.34)),
 		{"tags": ["linkage", "moving"]})
 	asset.add("polish_rod_collar", _part(Stock.cylinder(size * 0.055, size * 0.055,
 		size * 0.10, 12), arcane),
-		_xf(Vector3(rod_x, rod_bottom + size * 0.08, 0.0)),
+		_xf(Vector3(rod_x, rod_bottom + size * 0.08, frame_depth * 0.34)),
 		{"tags": ["linkage", "arcane"]})
 
 	asset.add("pump_body", _part(Stock.cylinder(body_radius, body_radius,
@@ -223,7 +247,7 @@ func build(p) -> Dictionary:
 	var tank_x := size * 0.34
 	for side in [-1.0, 1.0]:
 		var suffix := "L" if side < 0.0 else "R"
-		var center := Vector3(side * tank_x, tank_center_y, size * 0.07)
+		var center := Vector3(side * tank_x, tank_center_y, -float(side) * size * 0.12)
 		asset.add("tank_core_" + suffix,
 			_part(Stock.sphere(tank_radius, 14, 7), arcane),
 			_xf(center, Vector3.ZERO, Vector3(0.86, 1.06, 0.86)),
@@ -243,28 +267,55 @@ func build(p) -> Dictionary:
 			_xf(Vector3(center.x, center.y - tank_radius * 0.70, center.z)),
 			{"tags": ["tank", "trim"]})
 
-	var pipe_z := size * 0.19
-	var left_tank_top := Vector3(-tank_x, tank_center_y + tank_radius * 0.58, pipe_z)
-	var right_tank_top := Vector3(tank_x, tank_center_y + tank_radius * 0.60, pipe_z)
+	var pipe_z_front := size * 0.23
+	var pipe_z_back := -size * 0.22
+	var left_tank_top := Vector3(-tank_x, tank_center_y + tank_radius * 0.58, size * 0.12)
+	var right_tank_top := Vector3(tank_x, tank_center_y + tank_radius * 0.60, -size * 0.12)
 	_add_pipe(asset, "left_feed", [
 		left_tank_top,
-		Vector3(-tank_x, body_y + body_radius * 0.35, pipe_z),
-		Vector3(size * 0.06 - body_length * 0.48, body_y + body_radius * 0.35, pipe_z),
+		Vector3(-tank_x, body_y + body_radius * 0.35, pipe_z_front),
+		Vector3(size * 0.06 - body_length * 0.48, body_y + body_radius * 0.35, pipe_z_front),
+		Vector3(size * 0.06 - body_length * 0.48, body_y + body_radius * 0.35, size * 0.08),
 	], pipe_radius, arcane_dark)
 	_add_pipe(asset, "right_return", [
 		right_tank_top,
-		Vector3(tank_x, deck_y + size * 0.10, pipe_z),
-		Vector3(size * 0.16, deck_y + size * 0.10, pipe_z),
-		Vector3(size * 0.16, body_y - body_radius * 0.25, pipe_z),
+		Vector3(tank_x, deck_y + size * 0.10, pipe_z_back),
+		Vector3(size * 0.16, deck_y + size * 0.10, pipe_z_back),
+		Vector3(size * 0.16, body_y - body_radius * 0.25, pipe_z_back),
+		Vector3(size * 0.16, body_y - body_radius * 0.25, -size * 0.07),
 	], pipe_radius, arcane_dark)
-	var crank_center := Vector3(size * 0.28, body_y + size * 0.06, pipe_z * 0.78)
+	var crank_center := Vector3(size * 0.28, body_y + size * 0.06, pipe_z_front * 0.78)
 	asset.add("crank_disk", _part(Stock.cylinder(size * 0.095, size * 0.095,
 		size * 0.055, 14), dark),
 		_xf(crank_center, Vector3(90.0, 0.0, 0.0)), {"tags": ["moving", "linkage"]})
 	_add_pipe(asset, "crank_link", [
 		crank_center + Vector3(size * 0.05, size * 0.02, 0.0),
-		Vector3(boom_right.x - size * 0.10, boom_right.y - size * 0.04, pipe_z * 0.78),
+		Vector3(boom_right.x - size * 0.10, boom_right.y - size * 0.04, frame_depth * 0.34),
 	], pipe_radius * 0.72, steel)
+
+	# Rear drive train prevents the mechanism from collapsing into a facade from +/−X and −Z.
+	var rear_wheel_center := Vector3(size * 0.22, body_y + size * 0.07, -size * 0.27)
+	asset.add("rear_flywheel", _part(Stock.cylinder(size * 0.15, size * 0.15,
+		size * 0.07, 16), sand_light),
+		_xf(rear_wheel_center, Vector3(90.0, 0.0, 0.0)),
+		{"tags": ["moving", "linkage", "rear_mechanism"]})
+	asset.add("rear_flywheel_hub", _part(Stock.cylinder(size * 0.052, size * 0.052,
+		size * 0.095, 12), arcane),
+		_xf(rear_wheel_center, Vector3(90.0, 0.0, 0.0)),
+		{"tags": ["moving", "linkage", "rear_mechanism"]})
+	_add_pipe(asset, "drive_shaft", [
+		Vector3(rear_wheel_center.x, rear_wheel_center.y, rear_wheel_center.z + size * 0.03),
+		Vector3(rear_wheel_center.x, rear_wheel_center.y, crank_center.z - size * 0.03),
+	], pipe_radius * 1.35, steel)
+	_add_pipe(asset, "rear_crank_link", [
+		rear_wheel_center + Vector3(size * 0.09, size * 0.025, 0.0),
+		Vector3(boom_right.x - size * 0.06, boom_right.y - size * 0.055,
+			-frame_depth * 0.34),
+	], pipe_radius * 0.82, steel)
+	asset.add("rear_drive_pedestal", _part(Stock.box(Vector3(size * 0.18,
+		size * 0.28, size * 0.16)), dark),
+		_xf(Vector3(rear_wheel_center.x, deck_y + size * 0.14, rear_wheel_center.z)),
+		{"tags": ["foundation", "rear_mechanism"]})
 
 	return {
 		"name": "arcane_pumpjack",
@@ -274,6 +325,9 @@ func build(p) -> Dictionary:
 		"checks": [
 			Checks.require_axis_size("platform", 0, base_radius * 2.0, size * 0.015),
 			Checks.require_axis_ratio("walking_beam", 0, "walking_beam", 1, 1.70, 3.20),
+			Checks.require_axis_range("walking_beam", 2, size * 0.10, size * 0.30),
+			Checks.require_axis_range("horsehead", 2, size * 0.16, size * 0.30),
+			Checks.require_axis_range("tower_pivot", 2, size * 0.20, size * 0.32),
 			Checks.require_not_buried("drive_wheel", "pump_body"),
 		],
 		"anchors": {
@@ -292,14 +346,17 @@ func build(p) -> Dictionary:
 			"minimum_contrast": 0.055,
 			"minimum_stroke_px": 1.25,
 			"critical_parts": {
-				"walking_beam": {"minimum_visible_fraction": 0.12,\n\t\t\t\t\t"views": [0.0, 45.0, 135.0, 180.0, 225.0, 315.0]},
+				"walking_beam": {"minimum_visible_fraction": 0.12,
+					"views": [0.0, 45.0, 135.0, 180.0, 225.0, 315.0]},
 				"horsehead": {"minimum_visible_fraction": 0.10},
 				"tank_core_L": {"minimum_visible_fraction": 0.18,
-					"views": [0.0, 45.0, 315.0]},
+					"views": [0.0, 45.0, 90.0, 270.0, 315.0]},
 				"tank_core_R": {"minimum_visible_fraction": 0.18,
-					"views": [0.0, 45.0, 315.0]},
+					"views": [90.0, 135.0, 180.0, 225.0, 270.0]},
 				"crank_disk": {"minimum_visible_fraction": 0.12,
 					"views": [0.0, 45.0, 315.0]},
+				"rear_flywheel": {"minimum_visible_fraction": 0.12,
+					"views": [135.0, 180.0, 225.0]},
 			},
 			"required": true,
 		},
