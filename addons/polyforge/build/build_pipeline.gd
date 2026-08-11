@@ -19,6 +19,8 @@ static func default_options() -> Dictionary:
 		"write_preview": true,
 		"measure_readability": true,
 		"measure_sweep_readability": true,
+		"view_set": "",
+		"sweep_view_set": "",
 		"viewer_template": "res://addons/polyforge/viewer/template.html",
 		"force": false,
 		"sweep_specs": [],
@@ -192,6 +194,14 @@ static func _apply_readability(validation: Dictionary, report: Dictionary,
 		else:
 			validation.warnings.append(message)
 
+static func _readability_policy(spec: Dictionary, options: Dictionary,
+		for_sweep := false) -> Dictionary:
+	var policy := Readability.normalize_policy(str(spec.category), spec.readability)
+	var override := str(options.sweep_view_set if for_sweep else options.view_set)
+	if override != "":
+		policy.view_set = override
+	return policy
+
 static func run(tree: SceneTree, spec: Dictionary, supplied_options := {}) -> Dictionary:
 	var options := default_options()
 	for key in supplied_options:
@@ -210,7 +220,7 @@ static func run(tree: SceneTree, spec: Dictionary, supplied_options := {}) -> Di
 		"outputs": {}, "inspection": {}}
 	if not validation.ok and not bool(options.force):
 		return result
-	var readability_policy := Readability.normalize_policy(str(spec.category), spec.readability)
+	var readability_policy := _readability_policy(spec, options)
 	if bool(options.measure_readability) and bool(readability_policy.enabled):
 		var readability_scene := GLTFExport.scene_from_parts(spec.name, spec.assembly.parts)
 		var readability := await PreviewExport.measure_readability(
@@ -224,8 +234,7 @@ static func run(tree: SceneTree, spec: Dictionary, supplied_options := {}) -> Di
 					validation.parameter_sweep[case_index].readability = readability
 					continue
 				var case_spec: Dictionary = test_case.spec
-				var case_policy := Readability.normalize_policy(
-					str(case_spec.category), case_spec.readability)
+				var case_policy := _readability_policy(case_spec, options, true)
 				var case_scene := GLTFExport.scene_from_parts(
 					case_spec.name, case_spec.assembly.parts)
 				var case_readability := await PreviewExport.measure_readability(
@@ -292,7 +301,8 @@ static func run(tree: SceneTree, spec: Dictionary, supplied_options := {}) -> Di
 		var preview_path: String = str(options.out_dir).path_join(base + "_turntable.png")
 		var scene := GLTFExport.scene_from_parts(spec.name, spec.assembly.parts)
 		var preview := await PreviewExport.render_contact_sheet(
-			tree, scene, _bounds(spec.assembly.parts), preview_path)
+			tree, scene, _bounds(spec.assembly.parts), preview_path,
+			Vector2i(420, 500), str(readability_policy.view_set))
 		if preview.ok:
 			result.outputs.preview = preview_path
 		else:

@@ -23,6 +23,8 @@ func _usage() -> void:
 	print("                    [--viewer-template FILE]")
 	print("                    [--no-glb] [--no-viewer] [--no-preview] [--no-readability]")
 	print("                    [--no-sweep-readability] [--force]")
+	print("                    [--view-set front|cardinal|octants]")
+	print("                    [--sweep-view-set front|cardinal|octants]")
 	print("  inspect <asset.glb>")
 
 func _set_parameter(parsed: Dictionary, assignment: String) -> void:
@@ -84,6 +86,16 @@ func _parse_build(args: PackedStringArray) -> Dictionary:
 				parsed.options.measure_readability = false
 			"--no-sweep-readability":
 				parsed.options.measure_sweep_readability = false
+			"--view-set":
+				i += 1
+				assert(i < args.size() and args[i] in ["front", "cardinal", "octants"],
+					"--view-set needs front, cardinal, or octants")
+				parsed.options.view_set = args[i]
+			"--sweep-view-set":
+				i += 1
+				assert(i < args.size() and args[i] in ["front", "cardinal", "octants"],
+					"--sweep-view-set needs front, cardinal, or octants")
+				parsed.options.sweep_view_set = args[i]
 			"--force":
 				parsed.options.force = true
 			_:

@@ -14,6 +14,9 @@ static func default_policy(category: String) -> Dictionary:
 		"minimum_contrast": 0.08,
 		"minimum_stroke_px": 1.5,
 		"background_tolerance": 0.055,
+		"view_set": "front",
+		"critical_parts": {},
+		"minimum_visible_fraction": 0.35,
 	}
 	match category:
 		"plant":
@@ -34,7 +37,77 @@ static func normalize_policy(category: String, supplied := {}) -> Dictionary:
 			policy[key] = supplied[key]
 	policy.target_pixels = maxi(16, int(policy.target_pixels))
 	policy.supersample = clampi(int(policy.supersample), 1, 4)
+	assert(str(policy.view_set) in ["front", "cardinal", "octants"],
+		"readability view_set must be front, cardinal, or octants")
 	return policy
+
+static func view_angles(view_set: String) -> Array[float]:
+	match view_set:
+		"cardinal":
+			return [0.0, 90.0, 180.0, 270.0]
+		"octants":
+			return [0.0, 45.0, 90.0, 135.0, 180.0, 225.0, 270.0, 315.0]
+	return [0.0]
+
+static func view_is_required(rule, yaw: float) -> bool:
+	if not rule is Dictionary or not rule.has("views"):
+		return true
+	for value in rule.views:
+		if is_equal_approx(fposmod(float(value), 360.0), fposmod(yaw, 360.0)):
+			return true
+	return false
+
+static func aggregate_views(view_reports: Array, supplied_policy := {}) -> Dictionary:
+	var policy := normalize_policy("default", supplied_policy)
+	if view_reports.is_empty():
+		return {"available": false, "ok": false, "views": [],
+			"issues": PackedStringArray(["no readability views were rendered"]), "policy": policy}
+	var available := true
+	var issues := PackedStringArray()
+	var sums := {"regions": 0.0, "contrast": 0.0, "stroke_px": 0.0,
+		"width_px": 0.0, "height_px": 0.0, "solidity": 0.0}
+	var worst_index := 0
+	var worst_margin := INF
+	for index in range(view_reports.size()):
+		var view: Dictionary = view_reports[index]
+		var report: Dictionary = view.get("readability", {})
+		available = available and bool(report.get("available", false))
+		var yaw := float(view.get("yaw", 0.0))
+		for issue in view.get("issues", PackedStringArray()):
+			issues.append("view %d°: %s" % [roundi(yaw), issue])
+		for issue in report.get("issues", PackedStringArray()):
+			issues.append("view %d°: %s" % [roundi(yaw), issue])
+		for key in sums:
+			sums[key] += float(report.get(key, 0.0))
+		var margin := minf(
+			float(report.get("regions", 0)) / maxf(float(policy.minimum_regions), 1.0),
+			minf(float(report.get("contrast", 0.0)) / maxf(float(policy.minimum_contrast), 0.000001),
+				float(report.get("stroke_px", 0.0)) / maxf(float(policy.minimum_stroke_px), 0.000001)))
+		if margin < worst_margin:
+			worst_margin = margin
+			worst_index = index
+	var divisor := maxf(float(view_reports.size()), 1.0)
+	var averages := {}
+	for key in sums:
+		averages[key] = snappedf(float(sums[key]) / divisor, 0.001)
+	var worst: Dictionary = view_reports[worst_index]
+	var worst_readability: Dictionary = worst.get("readability", {})
+	return {
+		"available": available,
+		"ok": available and issues.is_empty(),
+		"view_set": policy.view_set,
+		"views": view_reports,
+		"worst_view": worst.get("yaw", 0.0),
+		"averages": averages,
+		"regions": worst_readability.get("regions", 0),
+		"contrast": worst_readability.get("contrast", 0.0),
+		"stroke_px": worst_readability.get("stroke_px", 0.0),
+		"width_px": worst_readability.get("width_px", 0.0),
+		"height_px": worst_readability.get("height_px", 0.0),
+		"solidity": worst_readability.get("solidity", 0.0),
+		"issues": issues,
+		"policy": policy,
+	}
 
 static func _color_distance(a: Color, b: Color) -> float:
 	return absf(a.r - b.r) + absf(a.g - b.g) + absf(a.b - b.b)
