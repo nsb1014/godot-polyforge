@@ -19,6 +19,8 @@ static func defaults() -> Dictionary:
 		"metadata": {},
 		"parameters": {},
 		"readability": {},
+		"symmetry": [],
+		"require_surface_classification": false,
 		"front": "",
 		"loose": false,
 	}
@@ -41,6 +43,7 @@ static func normalize(raw, source_path := "") -> Dictionary:
 	assert(spec.metadata is Dictionary, "recipe metadata must be a Dictionary")
 	assert(spec.parameters is Dictionary, "recipe parameters must be a Dictionary")
 	assert(spec.readability is Dictionary, "recipe readability policy must be a Dictionary")
+	assert(spec.symmetry is Array, "recipe symmetry contracts must be an Array")
 	return spec
 
 static func _method_argument_count(provider, method_name: String) -> int:

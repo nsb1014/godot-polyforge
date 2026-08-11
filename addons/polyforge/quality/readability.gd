@@ -16,6 +16,7 @@ static func default_policy(category: String) -> Dictionary:
 		"background_tolerance": 0.055,
 		"view_set": "front",
 		"critical_parts": {},
+		"visibility_pairs": [],
 		"minimum_visible_fraction": 0.35,
 	}
 	match category:
@@ -92,6 +93,10 @@ static func aggregate_views(view_reports: Array, supplied_policy := {}) -> Dicti
 		averages[key] = snappedf(float(sums[key]) / divisor, 0.001)
 	var worst: Dictionary = view_reports[worst_index]
 	var worst_readability: Dictionary = worst.get("readability", {})
+	var visibility_balance := _paired_visibility(view_reports,
+		policy.get("visibility_pairs", []))
+	for issue in visibility_balance.issues:
+		issues.append(issue)
 	return {
 		"available": available,
 		"ok": available and issues.is_empty(),
@@ -106,8 +111,54 @@ static func aggregate_views(view_reports: Array, supplied_policy := {}) -> Dicti
 		"height_px": worst_readability.get("height_px", 0.0),
 		"solidity": worst_readability.get("solidity", 0.0),
 		"issues": issues,
+		"visibility_balance": visibility_balance,
 		"policy": policy,
 	}
+
+static func _view_at(view_reports: Array, yaw: float):
+	for view in view_reports:
+		if is_equal_approx(fposmod(float(view.get("yaw", 0.0)), 360.0),
+				fposmod(yaw, 360.0)):
+			return view
+	return null
+
+static func _paired_visibility(view_reports: Array, rules: Array) -> Dictionary:
+	var issues := PackedStringArray()
+	var measurements := []
+	for rule in rules:
+		var name := str(rule.get("name", "visibility_pair"))
+		var first := str(rule.get("first", ""))
+		var second := str(rule.get("second", ""))
+		var maximum_delta := float(rule.get("maximum_delta", 0.25))
+		for raw_pair in rule.get("views", []):
+			if not raw_pair is Array or raw_pair.size() != 2:
+				issues.append("visibility pair %s requires [first_yaw, second_yaw] entries" % name)
+				continue
+			var first_yaw := float(raw_pair[0])
+			var second_yaw := float(raw_pair[1])
+			var first_view = _view_at(view_reports, first_yaw)
+			var second_view = _view_at(view_reports, second_yaw)
+			if first_view == null or second_view == null:
+				issues.append("visibility pair %s is missing rendered views %d°/%d°" % [
+					name, roundi(first_yaw), roundi(second_yaw)])
+				continue
+			var first_report: Dictionary = first_view.get("part_visibility", {}).get(first, {})
+			var second_report: Dictionary = second_view.get("part_visibility", {}).get(second, {})
+			if first_report.is_empty() or second_report.is_empty():
+				issues.append("visibility pair %s is missing semantic masks %s/%s" % [
+					name, first, second])
+				continue
+			var first_fraction := float(first_report.get("visible_fraction", 0.0))
+			var second_fraction := float(second_report.get("visible_fraction", 0.0))
+			var delta := absf(first_fraction - second_fraction)
+			measurements.append({"name": name, "first": first, "second": second,
+				"first_yaw": first_yaw, "second_yaw": second_yaw,
+				"first_fraction": first_fraction, "second_fraction": second_fraction,
+				"delta": snappedf(delta, 0.001), "maximum_delta": maximum_delta})
+			if delta > maximum_delta:
+				issues.append("visibility pair %s at %d°/%d° differs by %.3f; maximum %.3f" % [
+					name, roundi(first_yaw), roundi(second_yaw), delta, maximum_delta])
+	return {"ok": issues.is_empty(), "issues": issues, "measurements": measurements}
 
 static func _color_distance(a: Color, b: Color) -> float:
 	return absf(a.r - b.r) + absf(a.g - b.g) + absf(a.b - b.b)

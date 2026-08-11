@@ -5,6 +5,8 @@ const Checks := preload("res://addons/polyforge/quality/checks.gd")
 const Lint := preload("res://addons/polyforge/quality/lint_core.gd")
 const Readability := preload("res://addons/polyforge/quality/readability.gd")
 const Attachments := preload("res://addons/polyforge/core/attachments.gd")
+const SurfaceValidation := preload("res://addons/polyforge/quality/surface_validation.gd")
+const Symmetry := preload("res://addons/polyforge/quality/symmetry.gd")
 const GLTFExport := preload("res://addons/polyforge/exporters/gltf_export.gd")
 const ManifestExport := preload("res://addons/polyforge/exporters/manifest_export.gd")
 const PreviewExport := preload("res://addons/polyforge/exporters/preview_export.gd")
@@ -83,6 +85,19 @@ static func validate(spec: Dictionary) -> Dictionary:
 		warnings.append(warning)
 	for measurement in attachment_validation.measurements:
 		measurements.append({"type": "attachment", "result": measurement})
+	var surface_validation := SurfaceValidation.evaluate(spec.assembly.parts,
+		bool(spec.require_surface_classification))
+	for failure in surface_validation.failures:
+		failures.append("surface: " + failure)
+	for warning in surface_validation.warnings:
+		warnings.append("surface: " + warning)
+	for measurement in surface_validation.measurements:
+		measurements.append({"type": "surface", "result": measurement})
+	var symmetry_validation := Symmetry.evaluate(spec.assembly, spec.symmetry)
+	for failure in symmetry_validation.failures:
+		failures.append("symmetry: " + failure)
+	for measurement in symmetry_validation.measurements:
+		measurements.append({"type": "symmetry", "result": measurement})
 	var bounds := _bounds(spec.assembly.parts)
 	var anchor_slack := maxf(bounds.size.x, maxf(bounds.size.y, bounds.size.z)) * 0.25
 	for anchor_name in spec.anchors:
@@ -98,6 +113,8 @@ static func validate(spec: Dictionary) -> Dictionary:
 		"warnings": warnings,
 		"measurements": measurements,
 		"attachments": attachment_validation,
+		"surfaces": surface_validation,
+		"symmetry": symmetry_validation,
 		"triangles": triangles,
 	}
 

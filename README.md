@@ -16,7 +16,9 @@ palette, catalog, asset naming scheme, or output path dependency.
 | `core/compose.gd` | Seeded ring, arc, border, and anchored-cluster placement |
 | `core/density.gd` | Consumer-defined sampling profiles and triangle targets |
 | `core/palette.gd` | OKLab palette and dimension-grid snapping |
-| `core/assembly.gd` | Named subparts, local frames, intentional-overlap metadata, merge, and mirroring |
+| `core/assembly.gd` | Named subparts, reusable component instances, sockets, local frames, and merge |
+| `core/component.gd` | Nestable local-space component definitions with shared meshes and sockets |
+| `core/surface_types.gd` | Construction and functional-role surface taxonomy |
 | `core/asset_recipe.gd` | Project-owned recipe loading and normalized compiler contract |
 | `core/parameters.gd` | Validated primary measurements, derived-dimension provenance, overrides, and sweeps |
 | `core/attachments.gd` | Geometry-sampled surface frames, child bindings, provenance, and drift checks |
@@ -26,11 +28,13 @@ palette, catalog, asset naming scheme, or output path dependency.
 | `quality/lint_core.gd` | Bounds, indices, degeneracy, winding, manifold, budget, attribute, and determinism checks |
 | `quality/checks.gd` | Named-part gap, intersection, burial, symmetry, ratio, and `noclip` checks |
 | `quality/readability.gd` | Play-size foreground, color-region, contrast, thickness, and silhouette measurements |
+| `quality/surface_validation.gd` | Surface-type-specific proportion and interface validation |
+| `quality/symmetry.gd` | Scoped component-reuse and reflection contracts |
 | `terrain/zone.gd` | Landforms, spline cuts, surface rules, and constrained deterministic scatter |
 | `exporters/viewer_export.gd` | JSON and self-contained HTML export for the bundled WebGL viewer |
 | `exporters/gltf_export.gd` | Preserved/merged GLB export and Godot round-trip inspection |
 | `exporters/manifest_export.gd` | Bounds, anchors, materials, parts, validation, and output metadata |
-| `exporters/preview_export.gd` | Godot-rendered four-view contact sheets and play-size captures |
+| `exporters/preview_export.gd` | Godot-rendered multi-view contact sheets and play-size captures |
 | `build/build_pipeline.gd` | Validation gate and coordinated production output |
 | `cli/polyforge_cli.gd` | Headless `build` and `inspect` commands |
 
@@ -129,6 +133,46 @@ func build(p) -> Dictionary:
 See `examples/bronze_guardian_recipe.gd` for a multi-part model and `llms.txt` for the compact
 agent authoring contract.
 
+### Reusable components and scoped symmetry
+
+Use `Component` for geometry that should remain identical wherever it is placed. Components can
+contain named parts, sockets, and nested component instances. `Assembly.instance_component()`
+flattens the hierarchy for ordinary Godot/GLB export while retaining component IDs, source-part
+names, instance paths, shared mesh identity, and sockets in manifest version 5.
+
+```gdscript
+const Component := preload("res://addons/polyforge/core/component.gd")
+
+var bent := Component.new("derrick_bent")
+bent.add("left_leg", leg_mesh, left_leg_transform, leg_options)
+bent.add("right_leg", leg_mesh, right_leg_transform, leg_options)
+
+asset.instance_component("derrick_front", bent, front_transform)
+asset.instance_component("derrick_back", bent, back_transform)
+
+# Include only the relationship that is intended to be symmetric:
+"symmetry": [{
+	"name": "derrick front/back reuse",
+	"first": "derrick_front",
+	"second": "derrick_back",
+	"axis": "z",
+}]
+```
+
+Strict pairs must use the same component and mesh resources, remain rigidly transformed, and sit
+at reflected origins. Tanks, pipes, damage, controls, and other deliberately asymmetric systems
+can remain outside the contract.
+
+### Surface classification
+
+Parts may declare two independent surface fields: `construction` (`plate`, `prismatic`,
+`revolved`, `swept`, `lofted`, `shell`, `sculpted`, `repeated`, or `field`) and `role`
+(`structural`, `enclosure`, `interface`, `conduit`, `contact`, `silhouette`, `trim`,
+`deformable`, or `decorative`). Set `require_surface_classification` on a recipe to reject
+unclassified parts. PolyForge then selects relevant checks—for example plate thickness,
+prismatic slenderness, swept/conduit radius, revolved axis, or interface-socket metadata—without
+assuming that every asset genre has the same topology.
+
 ### Variable measurements
 
 Recipes may expose `parameters()` and accept the resulting measurement context in `build(p)`.
@@ -208,13 +252,18 @@ failed measurements—or an unavailable renderer—a build failure.
 	"minimum_regions": 3,
 	"minimum_contrast": 0.07,
 	"minimum_stroke_px": 1.5,
+	"view_set": "octants",
+	"critical_parts": {},
+	"visibility_pairs": [],
 	"required": false,
 }
 ```
 
 Use `--no-sweep-readability` to keep the base measurement while skipping variant renders, or
-`--no-readability` only for iteration. The four-view contact sheet remains a separate human
-review aid because missing back or side panels cannot be inferred reliably from a good front view.
+`--no-readability` only for iteration. Octant policies render all eight horizontal directions.
+`critical_parts` measures semantic ID masks, while `visibility_pairs` compares reusable front/back
+groups at paired angles and rejects excessive occlusion imbalance. The eight-view contact sheet
+remains a separate human review aid.
 
 ### Preserved versus merged GLB
 

@@ -39,7 +39,7 @@ godot --path . --script res://addons/polyforge/cli/polyforge_cli.gd -- \
   build res://models/my_asset.gd --param height=1.4 --out res://dist --mode both
 ```
 
-Outputs are GLB, manifest JSON, self-contained review HTML/JSON, and a four-view PNG when
+Outputs are GLB, manifest JSON, self-contained review HTML/JSON, and a multi-view PNG when
 the selected Godot renderer supports offscreen rendering. Every GLB is re-imported through
 Godot before the build succeeds.
 

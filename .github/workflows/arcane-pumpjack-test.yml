@@ -1,4 +1,4 @@
-name: Arcane pumpjack reference test
+name: Vapor derrick reference test
 
 on:
   pull_request:
@@ -13,7 +13,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: arcane-pumpjack-reference-probes-${{ github.event.pull_request.number || github.ref }}
+  group: vapor-derrick-reference-probes-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -82,7 +82,7 @@ jobs:
       - name: Upload model, viewer, manifest, and render
         uses: actions/upload-artifact@v4
         with:
-          name: arcane-pumpjack-polyforge
+          name: vapor-derrick-polyforge
           path: |
             dist/base/arcane_pumpjack.glb
             dist/base/arcane_pumpjack_merged.glb
