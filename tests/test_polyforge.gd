@@ -75,6 +75,9 @@ func _initialize() -> void:
 	check(Readability.view_angles("octants").size() == 8 and
 		Readability.view_angles("cardinal") == [0.0, 90.0, 180.0, 270.0],
 		"view policies select deterministic cardinal and octant camera sets")
+	check(Readability.view_is_required({"members": ["rail_a", "rail_b"],
+		"views": [45.0, 225.0]}, 225.0),
+		"semantic visibility rules can bind a logical part to a named mesh group")
 	var multiview := Readability.aggregate_views([
 		{"yaw": 0.0, "readability": readability, "issues": PackedStringArray()},
 		{"yaw": 180.0, "readability": readability, "issues": PackedStringArray([
