@@ -30,7 +30,8 @@ static func mesh_data(mesh: Mesh, model_name := "polyforge_model") -> Dictionary
 	var y_min := INF
 	var y_max := -INF
 	for si in range(mesh.get_surface_count()):
-		if mesh.surface_get_primitive_type(si) != Mesh.PRIMITIVE_TRIANGLES:
+		if mesh is ArrayMesh and \
+				(mesh as ArrayMesh).surface_get_primitive_type(si) != Mesh.PRIMITIVE_TRIANGLES:
 			continue
 		var arr := mesh.surface_get_arrays(si)
 		var src: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]

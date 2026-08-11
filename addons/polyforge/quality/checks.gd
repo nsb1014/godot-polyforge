@@ -23,7 +23,8 @@ static func geometry(part: Dictionary) -> Dictionary:
 	var mesh: Mesh = part.mesh
 	var xf: Transform3D = part.get("transform", Transform3D.IDENTITY)
 	for si in range(mesh.get_surface_count()):
-		if mesh.surface_get_primitive_type(si) != Mesh.PRIMITIVE_TRIANGLES:
+		if mesh is ArrayMesh and \
+				(mesh as ArrayMesh).surface_get_primitive_type(si) != Mesh.PRIMITIVE_TRIANGLES:
 			continue
 		var arr := mesh.surface_get_arrays(si)
 		var src: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]

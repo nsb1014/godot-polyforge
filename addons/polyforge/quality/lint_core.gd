@@ -110,8 +110,14 @@ static func check_mesh(mesh: Mesh, tri_budget: int = -1) -> PackedStringArray:
 	if mesh == null or mesh.get_surface_count() == 0:
 		fails.append("empty mesh")
 		return fails
+	# Godot 4.4's stock sphere and capsule generators include collapsed triangles at
+	# their poles. They are engine-owned topology, not an authored mesh defect.
+	var allows_stock_poles := mesh is SphereMesh or mesh is CapsuleMesh
 	for si in range(mesh.get_surface_count()):
-		if mesh.surface_get_primitive_type(si) != Mesh.PRIMITIVE_TRIANGLES:
+		# Godot 4.4 exposes this query on ArrayMesh but not stock PrimitiveMesh
+		# subclasses. PrimitiveMesh surfaces are triangle lists by contract.
+		if mesh is ArrayMesh and \
+				(mesh as ArrayMesh).surface_get_primitive_type(si) != Mesh.PRIMITIVE_TRIANGLES:
 			fails.append("surface %d is not a triangle list" % si)
 			continue
 		var arr: Array = mesh.surface_get_arrays(si)
@@ -143,7 +149,8 @@ static func check_mesh(mesh: Mesh, tri_budget: int = -1) -> PackedStringArray:
 			var a := verts[idx[ti]]
 			var b := verts[idx[ti + 1]]
 			var c := verts[idx[ti + 2]]
-			if (b - a).cross(c - a).length_squared() * 0.25 < AREA_EPSILON:
+			if not allows_stock_poles and \
+					(b - a).cross(c - a).length_squared() * 0.25 < AREA_EPSILON:
 				fails.append("surface %d has a degenerate triangle at index %d" % [si, ti / 3])
 				break
 		if arr[Mesh.ARRAY_COLOR] != null:
