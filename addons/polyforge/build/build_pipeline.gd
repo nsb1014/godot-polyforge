@@ -3,6 +3,8 @@ extends RefCounted
 
 const Checks := preload("res://addons/polyforge/quality/checks.gd")
 const Lint := preload("res://addons/polyforge/quality/lint_core.gd")
+const Readability := preload("res://addons/polyforge/quality/readability.gd")
+const Attachments := preload("res://addons/polyforge/core/attachments.gd")
 const GLTFExport := preload("res://addons/polyforge/exporters/gltf_export.gd")
 const ManifestExport := preload("res://addons/polyforge/exporters/manifest_export.gd")
 const PreviewExport := preload("res://addons/polyforge/exporters/preview_export.gd")
@@ -15,6 +17,8 @@ static func default_options() -> Dictionary:
 		"write_glb": true,
 		"write_viewer": true,
 		"write_preview": true,
+		"measure_readability": true,
+		"measure_sweep_readability": true,
 		"viewer_template": "res://addons/polyforge/viewer/template.html",
 		"force": false,
 		"sweep_specs": [],
@@ -70,6 +74,13 @@ static func validate(spec: Dictionary) -> Dictionary:
 			failures.append(failure)
 	elif bool(spec.noclip) and bool(spec.loose):
 		warnings.append("noclip skipped because recipe declares loose=true")
+	var attachment_validation := Attachments.validate(spec.assembly, spec.attachments)
+	for failure in attachment_validation.failures:
+		failures.append(failure)
+	for warning in attachment_validation.warnings:
+		warnings.append(warning)
+	for measurement in attachment_validation.measurements:
+		measurements.append({"type": "attachment", "result": measurement})
 	var bounds := _bounds(spec.assembly.parts)
 	var anchor_slack := maxf(bounds.size.x, maxf(bounds.size.y, bounds.size.z)) * 0.25
 	for anchor_name in spec.anchors:
@@ -84,6 +95,7 @@ static func validate(spec: Dictionary) -> Dictionary:
 		"failures": failures,
 		"warnings": warnings,
 		"measurements": measurements,
+		"attachments": attachment_validation,
 		"triangles": triangles,
 	}
 
@@ -99,6 +111,8 @@ static func validate_sweep(cases: Array) -> Dictionary:
 		var bounds := _bounds(spec.assembly.parts)
 		var record := {
 			"label": test_case.label,
+			"varied": test_case.get("varied", PackedStringArray()),
+			"plan": test_case.get("plan", {}),
 			"ok": checked.ok,
 			"values": spec.parameters.get("values", {}),
 			"triangles": checked.triangles,
@@ -110,6 +124,9 @@ static func validate_sweep(cases: Array) -> Dictionary:
 		if str(test_case.label) == "base":
 			base_record = record
 			base_spec = spec
+			if bool(record.plan.get("truncated", false)):
+				warnings.append("parameter sweep capped at %d of %d generated cases" % [
+					int(record.plan.case_limit), int(record.plan.generated_cases)])
 		else:
 			for failure in checked.failures:
 				failures.append("parameter sweep %s: %s" % [test_case.label, failure])
@@ -124,7 +141,8 @@ static func validate_sweep(cases: Array) -> Dictionary:
 			for raw_name in parameter_schema:
 				var name := str(raw_name)
 				var entry: Dictionary = parameter_schema[raw_name]
-				if not bool(entry.get("uniform_scale", false)) or not str(record.label).begins_with(name + "="):
+				if not bool(entry.get("uniform_scale", false)) or \
+						record.varied.size() != 1 or not record.varied.has(name):
 					continue
 				var base_value := float(base_values[name])
 				var case_value := float(record.values[name])
@@ -153,6 +171,27 @@ static func _record_error(result: Dictionary, label: String, error: Error) -> vo
 		result.validation.ok = false
 		result.export_ok = false
 
+static func _apply_readability(validation: Dictionary, report: Dictionary,
+		required: bool, label := "") -> void:
+	var prefix := "play-size readability"
+	if label != "":
+		prefix = "parameter sweep %s readability" % label
+	if not bool(report.get("available", false)):
+		var reasons = report.get("issues", PackedStringArray())
+		var reason := str(reasons[0]) if not reasons.is_empty() else "renderer unavailable"
+		var message := "%s unavailable: %s" % [prefix, reason]
+		if required:
+			validation.failures.append(message)
+		else:
+			validation.warnings.append(message)
+		return
+	for issue in report.issues:
+		var message := "%s: %s" % [prefix, issue]
+		if required:
+			validation.failures.append(message)
+		else:
+			validation.warnings.append(message)
+
 static func run(tree: SceneTree, spec: Dictionary, supplied_options := {}) -> Dictionary:
 	var options := default_options()
 	for key in supplied_options:
@@ -169,6 +208,38 @@ static func run(tree: SceneTree, spec: Dictionary, supplied_options := {}) -> Di
 	validation.ok = validation.failures.is_empty()
 	var result := {"ok": validation.ok, "export_ok": true, "validation": validation,
 		"outputs": {}, "inspection": {}}
+	if not validation.ok and not bool(options.force):
+		return result
+	var readability_policy := Readability.normalize_policy(str(spec.category), spec.readability)
+	if bool(options.measure_readability) and bool(readability_policy.enabled):
+		var readability_scene := GLTFExport.scene_from_parts(spec.name, spec.assembly.parts)
+		var readability := await PreviewExport.measure_readability(
+			tree, readability_scene, _bounds(spec.assembly.parts), readability_policy)
+		validation.readability = readability
+		_apply_readability(validation, readability, bool(readability_policy.required))
+		if bool(readability.get("available", false)) and bool(options.measure_sweep_readability):
+			for case_index in range(options.sweep_specs.size()):
+				var test_case: Dictionary = options.sweep_specs[case_index]
+				if str(test_case.label) == "base":
+					validation.parameter_sweep[case_index].readability = readability
+					continue
+				var case_spec: Dictionary = test_case.spec
+				var case_policy := Readability.normalize_policy(
+					str(case_spec.category), case_spec.readability)
+				var case_scene := GLTFExport.scene_from_parts(
+					case_spec.name, case_spec.assembly.parts)
+				var case_readability := await PreviewExport.measure_readability(
+					tree, case_scene, _bounds(case_spec.assembly.parts), case_policy)
+				validation.parameter_sweep[case_index].readability = case_readability
+				_apply_readability(validation, case_readability,
+					bool(case_policy.required), str(test_case.label))
+				if not bool(case_readability.get("available", false)):
+					break
+	else:
+		validation.readability = {"available": false, "enabled": false,
+			"policy": readability_policy}
+	validation.ok = validation.failures.is_empty()
+	result.ok = validation.ok
 	if not validation.ok and not bool(options.force):
 		return result
 	var dir_error := _ensure_directory(options.out_dir)

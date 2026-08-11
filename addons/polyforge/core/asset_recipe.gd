@@ -15,8 +15,10 @@ static func defaults() -> Dictionary:
 		"checks": [],
 		"noclip": false,
 		"anchors": {},
+		"attachments": {},
 		"metadata": {},
 		"parameters": {},
+		"readability": {},
 		"front": "",
 		"loose": false,
 	}
@@ -35,8 +37,10 @@ static func normalize(raw, source_path := "") -> Dictionary:
 	assert(spec.assembly.get("parts") != null, "recipe assembly must expose named parts")
 	assert(spec.checks is Array, "recipe checks must be an Array")
 	assert(spec.anchors is Dictionary, "recipe anchors must be a Dictionary")
+	assert(spec.attachments is Dictionary, "recipe attachments must be a Dictionary")
 	assert(spec.metadata is Dictionary, "recipe metadata must be a Dictionary")
 	assert(spec.parameters is Dictionary, "recipe parameters must be a Dictionary")
+	assert(spec.readability is Dictionary, "recipe readability policy must be a Dictionary")
 	return spec
 
 static func _method_argument_count(provider, method_name: String) -> int:
@@ -74,14 +78,18 @@ static func load_file(path: String, overrides := {}) -> Dictionary:
 	return spec
 
 static func load_sweep(path: String, base_overrides := {},
-		selected := PackedStringArray()) -> Array[Dictionary]:
+		selected := PackedStringArray(), include_interactions := true,
+		max_cases := 128) -> Array[Dictionary]:
 	var schema := parameter_schema(path)
 	if schema.is_empty():
 		return []
 	var specs: Array[Dictionary] = []
-	for test_case in Parameters.sweep_cases(schema, base_overrides, selected):
+	for test_case in Parameters.sweep_cases(
+			schema, base_overrides, selected, include_interactions, max_cases):
 		specs.append({
 			"label": test_case.label,
+			"varied": test_case.varied,
+			"plan": test_case.get("plan", {}),
 			"spec": load_file(path, test_case.overrides),
 		})
 	return specs

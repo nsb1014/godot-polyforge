@@ -28,9 +28,11 @@ the WAM-derived portions are included under the separate permission described ab
 
 ## Design reference
 
-The dimension-driven recipe workflow added to `core/parameters.gd` was independently
+The dimension-driven recipe workflow and play-size measurement policy added to
+`core/parameters.gd` and `quality/readability.gd` were independently
 implemented in GDScript after studying the public documentation and unminified source of
 [`antics-modelkit`](https://antics.gg/modelkit), version 0.11.1, by the Antics team. Its
 principles of naming dimensions, deriving relational coordinates, measuring emitted geometry,
-and running checks automatically informed the design. No ModelKit source code or proportion
+checking boundary combinations, evaluating rendered play-size output, and running checks
+automatically informed the design. No ModelKit source code, readability thresholds, or proportion
 table is copied into this repository. ModelKit is distributed under the MIT License.

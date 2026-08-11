@@ -4,11 +4,13 @@ const PolyMesh := preload("res://addons/polyforge/core/mesh.gd")
 const SurfaceAttach := preload("res://addons/polyforge/core/surface_attach.gd")
 const Paint := preload("res://addons/polyforge/core/paint.gd")
 const Assembly := preload("res://addons/polyforge/core/assembly.gd")
+const Attachments := preload("res://addons/polyforge/core/attachments.gd")
 const Stock := preload("res://addons/polyforge/core/stock.gd")
 const Parameters := preload("res://addons/polyforge/core/parameters.gd")
 const AssetRecipe := preload("res://addons/polyforge/core/asset_recipe.gd")
 const Lint := preload("res://addons/polyforge/quality/lint_core.gd")
 const Checks := preload("res://addons/polyforge/quality/checks.gd")
+const Readability := preload("res://addons/polyforge/quality/readability.gd")
 const Zone := preload("res://addons/polyforge/terrain/zone.gd")
 const ViewerExport := preload("res://addons/polyforge/exporters/viewer_export.gd")
 const GLTFExport := preload("res://addons/polyforge/exporters/gltf_export.gd")
@@ -48,6 +50,28 @@ func _initialize() -> void:
 	check(hit.valid and hit.distance < 2.0, "surface attachment finds nearest triangle")
 	var frame := SurfaceAttach.frame_from_hit(hit, 0.02)
 	check(frame.basis.y.dot(hit.normal) > 0.999, "attachment frame follows surface normal")
+
+	var mount_asset := Assembly.new()
+	var mount_host := Stock.with_material(Stock.box(Vector3.ONE), _material("mount_host"))
+	mount_asset.add("host", mount_host)
+	var mounts := Attachments.new(mount_asset)
+	var mount_frame := mounts.surface("top_socket", "host", Vector3(0, 1.0, 0), {
+		"child": "marker", "max_hint_distance": 0.6, "position_tolerance": 0.0001})
+	mount_asset.add("marker", Stock.with_material(
+		Stock.box(Vector3(0.1, 0.1, 0.1)), _material("marker")), mount_frame)
+	var mount_validation := Attachments.validate(mount_asset, mounts.snapshot())
+	check(mount_validation.ok and mount_validation.measurements[0].child_distance < 0.0001,
+		"geometry-sampled attachment remains bound to its emitted host surface")
+
+	var readability_image := Image.create(64, 64, false, Image.FORMAT_RGBA8)
+	readability_image.fill(Color("d9dde3"))
+	readability_image.fill_rect(Rect2i(18, 10, 28, 44), Color("38312d"))
+	readability_image.fill_rect(Rect2i(26, 18, 12, 18), Color("d0a15c"))
+	var readability := Readability.analyze(readability_image, {
+		"supersample": 1, "minimum_regions": 2,
+		"minimum_contrast": 0.05, "minimum_stroke_px": 2.0})
+	check(readability.ok and readability.regions >= 2 and readability.stroke_px >= 2.0,
+		"play-size image analysis measures color regions, contrast, and feature thickness")
 
 	var asset := Assembly.new()
 	mesh.surface_set_material(0, _material("body"))
@@ -92,8 +116,9 @@ func _initialize() -> void:
 		"parameter overrides select a validated primary measurement")
 	check(torso_width > 0.0 and dimensions_snapshot.derived["torso.width"].sources.has("torso.height"),
 		"derived measurements retain their local dependency provenance")
-	check(Parameters.sweep_cases(dimensions.schema).size() == 5,
-		"parameter sweep covers base plus both bounds for every primary measurement")
+	var dimension_cases := Parameters.sweep_cases(dimensions.schema)
+	check(dimension_cases.size() == 9 and dimension_cases[-1].varied.size() == 2,
+		"parameter sweep covers individual bounds and pairwise boundary interactions")
 
 	var guardian := AssetRecipe.load_file("res://examples/bronze_guardian_recipe.gd",
 		{"height": 2.4, "bulk": 1.25})
@@ -102,8 +127,8 @@ func _initialize() -> void:
 		"parameterized guardian validates at a non-default measurement combination")
 	var guardian_sweep := BuildPipeline.validate_sweep(AssetRecipe.load_sweep(
 		"res://examples/bronze_guardian_recipe.gd"))
-	check(guardian_sweep.ok and guardian_sweep.records.size() == 5,
-		"parameter sweep validates the guardian at declared measurement bounds")
+	check(guardian_sweep.ok and guardian_sweep.records.size() == 9,
+		"parameter sweep validates Guardian single and pairwise boundary combinations")
 
 	var recipe := AssetRecipe.normalize({
 		"name": "named_test",
@@ -116,8 +141,8 @@ func _initialize() -> void:
 	var manifest := ManifestExport.data(recipe, validation, {"glb": "named_test.glb"})
 	check(manifest.parts.size() == 3 and manifest.anchors.socket == [1.0, 2.0, 3.0],
 		"manifest preserves named parts and numeric anchors")
-	check(manifest.format_version == 2 and manifest.has("parameters"),
-		"manifest records parameter values and derivation provenance")
+	check(manifest.format_version == 3 and manifest.has("parameters") and manifest.has("attachments"),
+		"manifest records parameter provenance and geometry-sampled attachments")
 
 	var glb_path := "user://polyforge_roundtrip.glb"
 	var export_error := GLTFExport.write_preserved("named_test", asset, glb_path)

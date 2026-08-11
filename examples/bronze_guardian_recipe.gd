@@ -2,6 +2,7 @@ extends RefCounted
 ## Small named-part recipe demonstrating the standalone compiler contract.
 
 const Assembly := preload("res://addons/polyforge/core/assembly.gd")
+const Attachments := preload("res://addons/polyforge/core/attachments.gd")
 const Parameters := preload("res://addons/polyforge/core/parameters.gd")
 const Stock := preload("res://addons/polyforge/core/stock.gd")
 const Checks := preload("res://addons/polyforge/quality/checks.gd")
@@ -50,6 +51,10 @@ func build(p) -> Dictionary:
 	var fist_y: float = p.derive("arm.fist_center_y", "height", 0.2853)
 	var bracer_y: float = p.derive("arm.bracer_center_y", "height", 0.4206)
 	var upper_arm_y: float = p.derive("arm.upper_center_y", "height", 0.5824)
+	var chest_query_y: float = p.derive("torso.chest_query_y", "height", 0.6265)
+	var chest_query_z: float = p.computed("torso.chest_query_z",
+		torso_radius * bulk * 0.95, ["torso.radius", "bulk"],
+		"torso.radius * bulk * 0.95")
 
 	var gunmetal := Stock.material("gunmetal", Color("605d59"), 0.55, 0.72)
 	var dark := Stock.material("dark_joint", Color("24211f"), 0.35, 0.84)
@@ -61,6 +66,7 @@ func build(p) -> Dictionary:
 	asset.add("torso", _part(Stock.sphere(torso_radius, 14, 7), gunmetal),
 		_xf(Vector3(0, torso_y, 0), Vector3.ZERO, Vector3(1.05 * bulk, 0.72, 0.62 * bulk)),
 		{"tags": ["body", "armor"]})
+	var attachments := Attachments.new(asset)
 	asset.add("collar", _part(Stock.torus(collar_inner, collar_outer, 20, 7), dark),
 		_xf(Vector3(0, collar_y, 0), Vector3.ZERO, Vector3(1.25 * bulk, 1.0, 0.9 * bulk)),
 		{"tags": ["joint"]})
@@ -74,9 +80,17 @@ func build(p) -> Dictionary:
 	asset.add("visor", _part(Stock.sphere(height * 0.0882, 16, 5), glow),
 		_xf(Vector3(0, visor_y, visor_z), Vector3.ZERO, Vector3(1.48 * bulk, 0.27, 0.15)),
 		{"tags": ["emissive", "front"]})
+	var chest_frame := attachments.surface("chest_badge_mount", "torso",
+		Vector3(0, chest_query_y, chest_query_z), {
+			"child": "chest_badge",
+			"heading": Vector3.UP,
+			"inset": height * 0.01,
+			"max_hint_distance": height * 0.16,
+			"position_tolerance": height * 0.0001,
+		})
 	asset.add("chest_badge", _part(Stock.cylinder(
 		height * 0.0971 * bulk, height * 0.0971 * bulk, height * 0.0353, 6), bronze),
-		_xf(Vector3(0, height * 0.6265, height * 0.1882 * bulk), Vector3(90, 0, 0)),
+		chest_frame,
 		{"tags": ["armor"]})
 
 	for side in [-1.0, 1.0]:
@@ -117,9 +131,12 @@ func build(p) -> Dictionary:
 		],
 		"anchors": {
 			"head": Vector3(0, head_y, height * 0.0118),
-			"chest": Vector3(0, height * 0.6265, height * 0.1882 * bulk),
+			"chest": chest_frame.origin,
 			"ground": Vector3.ZERO,
 		},
+		"attachments": attachments.snapshot(),
+		"readability": {"target_pixels": 64, "minimum_regions": 3,
+			"minimum_contrast": 0.07, "minimum_stroke_px": 1.5},
 		"front": "+Z",
 		"metadata": {"description": "Chunky armored robot parameterized by height and bulk"},
 	}

@@ -19,16 +19,18 @@ palette, catalog, asset naming scheme, or output path dependency.
 | `core/assembly.gd` | Named subparts, local frames, intentional-overlap metadata, merge, and mirroring |
 | `core/asset_recipe.gd` | Project-owned recipe loading and normalized compiler contract |
 | `core/parameters.gd` | Validated primary measurements, derived-dimension provenance, overrides, and sweeps |
+| `core/attachments.gd` | Geometry-sampled surface frames, child bindings, provenance, and drift checks |
 | `core/stock.gd` | Godot primitive and material factories for named recipes |
 | `core/surface_attach.gd` | Closest-surface placement with normal-aligned frames and inset |
 | `core/paint.gd` | Deterministic gradients, noise, streaks, bands, planks, bricks, and painted AO |
 | `quality/lint_core.gd` | Bounds, indices, degeneracy, winding, manifold, budget, attribute, and determinism checks |
 | `quality/checks.gd` | Named-part gap, intersection, burial, symmetry, ratio, and `noclip` checks |
+| `quality/readability.gd` | Play-size foreground, color-region, contrast, thickness, and silhouette measurements |
 | `terrain/zone.gd` | Landforms, spline cuts, surface rules, and constrained deterministic scatter |
 | `exporters/viewer_export.gd` | JSON and self-contained HTML export for the bundled WebGL viewer |
 | `exporters/gltf_export.gd` | Preserved/merged GLB export and Godot round-trip inspection |
 | `exporters/manifest_export.gd` | Bounds, anchors, materials, parts, validation, and output metadata |
-| `exporters/preview_export.gd` | Godot-rendered four-view contact sheets |
+| `exporters/preview_export.gd` | Godot-rendered four-view contact sheets and play-size captures |
 | `build/build_pipeline.gd` | Validation gate and coordinated production output |
 | `cli/polyforge_cli.gd` | Headless `build` and `inspect` commands |
 
@@ -151,15 +153,68 @@ var width := p.computed("torso.width", torso_height * p.value("bulk") * 0.8,
 	["torso.height", "bulk"], "torso.height * bulk * 0.8")
 ```
 
-The compiler automatically rebuilds and validates the base recipe plus the minimum and maximum
-of every declared primary measurement. This one-at-a-time sweep catches hard-coded placements,
-budget overruns, broken proportions, and geometry failures away from the default size. Use
-`--sweep-param height` to restrict the sweep or `--no-sweep` while iterating. Sweep measurements,
-bounds, triangle counts, warnings, and failures are written into the manifest.
+The compiler automatically rebuilds and validates the base recipe, each individual minimum and
+maximum, and all pairwise boundary combinations. Pairwise coverage catches failures such as a
+wide body whose minimum-height limbs now collide without paying the exponential cost of every
+possible combination. Use `--sweep-mode single` for the earlier one-at-a-time behavior,
+`--sweep-param height` to restrict the parameter set, `--sweep-limit 64` to cap work, or
+`--no-sweep` while iterating. Varied parameters, measurements, bounds, triangle counts, warnings,
+and failures are written into the manifest. A capped plan reports how many generated cases were
+not run; it never becomes silently quieter.
 
 Use `Checks.require_axis_size()` to compare emitted geometry with the dimension that claims to
 control it. This catches a parameter that is recorded correctly but was not actually applied to
 the mesh. Anchors are also checked against final asset bounds; outlying anchors report a warning.
+
+### Geometry-sampled attachments
+
+Use `Attachments.surface()` when one part must meet another part's emitted surface. The query is
+an authoring hint; PolyForge samples the closest triangle and returns a frame whose local +Y is
+the surface normal. The manifest retains the host, triangle, sampled position, normal, and query
+distance. Validation resamples the finished host and verifies both the surface and named child
+still agree with that frame.
+
+```gdscript
+const Attachments := preload("res://addons/polyforge/core/attachments.gd")
+
+var mounts := Attachments.new(asset)
+var sign_frame := mounts.surface("sign_mount", "wall", approximate_sign_position, {
+	"child": "sign",
+	"inset": wall_thickness * 0.1,
+	"max_hint_distance": wall_thickness * 4.0,
+})
+asset.add("sign", sign_mesh, sign_frame)
+
+# Include this in the recipe result:
+# "attachments": mounts.snapshot()
+```
+
+This avoids storing a second hand-typed coordinate for a relationship the wall geometry already
+defines. `examples/bronze_guardian_recipe.gd` now samples the chest badge from the torso mesh.
+
+### Play-size readability
+
+Every build renders a neutral front view sized to the asset's declared play-size pixel target,
+then repeats the measurement for enabled parameter-sweep cases so boundary interactions are
+judged from their rendered output as well as their geometry.
+The image pass measures surviving color regions, mean separation from the background, typical
+foreground thickness, subject size, and silhouette solidity. Results are advisory by default and
+are recorded under `validation.readability`; set `"required": true` in the recipe policy to make
+failed measurements—or an unavailable renderer—a build failure.
+
+```gdscript
+"readability": {
+	"target_pixels": 64,
+	"minimum_regions": 3,
+	"minimum_contrast": 0.07,
+	"minimum_stroke_px": 1.5,
+	"required": false,
+}
+```
+
+Use `--no-sweep-readability` to keep the base measurement while skipping variant renders, or
+`--no-readability` only for iteration. The four-view contact sheet remains a separate human
+review aid because missing back or side panels cannot be inferred reliably from a good front view.
 
 ### Preserved versus merged GLB
 
