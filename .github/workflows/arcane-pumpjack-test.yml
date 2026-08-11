@@ -76,12 +76,10 @@ jobs:
 
       - name: Run PolyForge runtime tests
         id: regression
-        if: always()
         continue-on-error: true
         run: 'timeout 180s "$GODOT_BIN" --headless --path . --script res://tests/test_polyforge.gd'
 
       - name: Upload model, viewer, manifest, and render
-        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: arcane-pumpjack-polyforge
@@ -98,7 +96,6 @@ jobs:
           retention-days: 14
 
       - name: Require every reliability probe
-        if: always()
         run: |
           test "${{ steps.geometry.outcome }}" = success
           test "${{ steps.base_render.outcome }}" = success
