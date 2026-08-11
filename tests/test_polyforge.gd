@@ -72,6 +72,20 @@ func _initialize() -> void:
 		"minimum_contrast": 0.05, "minimum_stroke_px": 2.0})
 	check(readability.ok and readability.regions >= 2 and readability.stroke_px >= 2.0,
 		"play-size image analysis measures color regions, contrast, and feature thickness")
+	check(Readability.view_angles("octants").size() == 8 and
+		Readability.view_angles("cardinal") == [0.0, 90.0, 180.0, 270.0],
+		"view policies select deterministic cardinal and octant camera sets")
+	check(Readability.view_is_required({"members": ["rail_a", "rail_b"],
+		"views": [45.0, 225.0]}, 225.0),
+		"semantic visibility rules can bind a logical part to a named mesh group")
+	var multiview := Readability.aggregate_views([
+		{"yaw": 0.0, "readability": readability, "issues": PackedStringArray()},
+		{"yaw": 180.0, "readability": readability, "issues": PackedStringArray([
+			"critical part linkage visibility 0.2 is below 0.35"])},
+	], {"view_set": "cardinal"})
+	check(not multiview.ok and multiview.worst_view == 0.0 and
+		str(multiview.issues[0]).begins_with("view 180°"),
+		"multi-view aggregation preserves angle-qualified semantic failures")
 
 	var asset := Assembly.new()
 	mesh.surface_set_material(0, _material("body"))
@@ -141,7 +155,7 @@ func _initialize() -> void:
 	var manifest := ManifestExport.data(recipe, validation, {"glb": "named_test.glb"})
 	check(manifest.parts.size() == 3 and manifest.anchors.socket == [1.0, 2.0, 3.0],
 		"manifest preserves named parts and numeric anchors")
-	check(manifest.format_version == 3 and manifest.has("parameters") and manifest.has("attachments"),
+	check(manifest.format_version == 4 and manifest.has("parameters") and manifest.has("attachments"),
 		"manifest records parameter provenance and geometry-sampled attachments")
 
 	var glb_path := "user://polyforge_roundtrip.glb"
