@@ -1,6 +1,9 @@
 name: Arcane pumpjack reference test
 
 on:
+  push:
+    branches:
+      - "agent/arcane-pumpjack-reference-test"
   pull_request:
     paths:
       - "addons/polyforge/**"
