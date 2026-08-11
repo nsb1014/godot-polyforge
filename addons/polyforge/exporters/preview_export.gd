@@ -1,5 +1,5 @@
 extends RefCounted
-## Neutral-studio four-view contact sheets rendered by Godot itself.
+## Neutral-studio multi-view contact sheets rendered by Godot itself.
 ##
 ## Rendering can be unavailable with a dummy headless renderer. That is reported as an
 ## export warning; GLB, manifest, and browser-viewer output remain deterministic.

@@ -2,6 +2,8 @@ extends RefCounted
 ## Named, transformable subparts. Names survive long enough for semantic lint and exports.
 
 var parts: Array[Dictionary] = []
+var component_instances: Array[Dictionary] = []
+var sockets: Dictionary = {}
 var _frames: Array[Transform3D] = [Transform3D.IDENTITY]
 
 func current_frame() -> Transform3D:
@@ -25,9 +27,54 @@ func add(name: String, mesh: Mesh, local_transform := Transform3D.IDENTITY,
 		"transform": current_frame() * local_transform,
 		"intentional_overlaps": PackedStringArray(options.get("intentional_overlaps", [])),
 		"tags": PackedStringArray(options.get("tags", [])),
+		"surface": options.get("surface", {}),
+		"component_id": str(options.get("component_id", "")),
+		"source_part": str(options.get("source_part", name)),
+		"component_path": str(options.get("component_path", "")),
+		"instance_path": str(options.get("instance_path", "")),
 	}
 	parts.append(record)
 	return record
+
+func instance_component(instance_name: String, component,
+		local_transform := Transform3D.IDENTITY, options := {}) -> Array[Dictionary]:
+	assert(instance_name != "", "component instances require a non-empty name")
+	var root_path := str(options.get("instance_path", instance_name))
+	var root_transform := current_frame() * local_transform
+	var flattened: Dictionary = component.flattened(root_path, root_transform)
+	for instance in flattened.instances:
+		component_instances.append(instance)
+	for socket_name in flattened.sockets:
+		sockets[socket_name] = flattened.sockets[socket_name]
+	var emitted: Array[Dictionary] = []
+	for part in flattened.parts:
+		var safe_path := str(part.component_path).replace("/", "__")
+		var emitted_name := safe_path + "__" + str(part.source_part)
+		emitted.append(add(emitted_name, part.mesh, part.transform, {
+			"intentional_overlaps": part.intentional_overlaps,
+			"tags": part.tags,
+			"surface": part.surface,
+			"component_id": part.component_id,
+			"source_part": part.source_part,
+			"component_path": part.component_path,
+			"instance_path": root_path,
+		}))
+	return emitted
+
+func define_socket(name: String, transform: Transform3D) -> void:
+	sockets[name] = current_frame() * transform
+
+func socket(name: String) -> Transform3D:
+	assert(sockets.has(name), "unknown assembly socket: " + name)
+	return sockets[name]
+
+func part_names_for_instance(instance_path: String) -> PackedStringArray:
+	var names := PackedStringArray()
+	for part in parts:
+		var path := str(part.get("component_path", ""))
+		if path == instance_path or path.begins_with(instance_path + "/"):
+			names.append(str(part.name))
+	return names
 
 func add_polymesh(name: String, poly, tag_materials: Dictionary,
 		local_transform := Transform3D.IDENTITY, options := {}) -> Array[Dictionary]:

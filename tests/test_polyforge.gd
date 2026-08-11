@@ -4,6 +4,7 @@ const PolyMesh := preload("res://addons/polyforge/core/mesh.gd")
 const SurfaceAttach := preload("res://addons/polyforge/core/surface_attach.gd")
 const Paint := preload("res://addons/polyforge/core/paint.gd")
 const Assembly := preload("res://addons/polyforge/core/assembly.gd")
+const Component := preload("res://addons/polyforge/core/component.gd")
 const Attachments := preload("res://addons/polyforge/core/attachments.gd")
 const Stock := preload("res://addons/polyforge/core/stock.gd")
 const Parameters := preload("res://addons/polyforge/core/parameters.gd")
@@ -11,6 +12,7 @@ const AssetRecipe := preload("res://addons/polyforge/core/asset_recipe.gd")
 const Lint := preload("res://addons/polyforge/quality/lint_core.gd")
 const Checks := preload("res://addons/polyforge/quality/checks.gd")
 const Readability := preload("res://addons/polyforge/quality/readability.gd")
+const Symmetry := preload("res://addons/polyforge/quality/symmetry.gd")
 const Zone := preload("res://addons/polyforge/terrain/zone.gd")
 const ViewerExport := preload("res://addons/polyforge/exporters/viewer_export.gd")
 const GLTFExport := preload("res://addons/polyforge/exporters/gltf_export.gd")
@@ -86,6 +88,44 @@ func _initialize() -> void:
 	check(not multiview.ok and multiview.worst_view == 0.0 and
 		str(multiview.issues[0]).begins_with("view 180°"),
 		"multi-view aggregation preserves angle-qualified semantic failures")
+	var paired_visibility := Readability.aggregate_views([
+		{"yaw": 0.0, "readability": readability, "issues": PackedStringArray(),
+			"part_visibility": {"front": {"visible_fraction": 0.72}}},
+		{"yaw": 180.0, "readability": readability, "issues": PackedStringArray(),
+			"part_visibility": {"back": {"visible_fraction": 0.68}}},
+	], {"view_set": "cardinal", "visibility_pairs": [{"name": "paired bent",
+		"first": "front", "second": "back", "views": [[0.0, 180.0]],
+		"maximum_delta": 0.05}]})
+	check(paired_visibility.ok and paired_visibility.visibility_balance.measurements.size() == 1,
+		"paired rendered visibility accepts balanced reusable structure across opposite views")
+
+	var module := Component.new("test_beam")
+	var module_mesh := Stock.with_material(Stock.box(Vector3(2.0, 0.2, 0.2)),
+		_material("module"))
+	module.add("core", module_mesh, Transform3D.IDENTITY, {"surface": {
+		"construction": "prismatic", "role": "structural", "minimum_slenderness": 2.0}})
+	module.define_socket("end", Transform3D(Basis.IDENTITY, Vector3(1.0, 0.0, 0.0)))
+	var component_asset := Assembly.new()
+	component_asset.instance_component("pair_front", module,
+		Transform3D(Basis.IDENTITY, Vector3(0.0, 0.0, 1.0)))
+	component_asset.instance_component("pair_back", module,
+		Transform3D(Basis.IDENTITY, Vector3(0.0, 0.0, -1.0)))
+	var symmetry_contract := [{"name": "test pair", "first": "pair_front",
+		"second": "pair_back", "axis": "z", "tolerance": 0.0001}]
+	var component_symmetry := Symmetry.evaluate(component_asset, symmetry_contract)
+	check(component_symmetry.ok and component_asset.parts[0].mesh == component_asset.parts[1].mesh,
+		"scoped symmetry requires paired instances to reuse one component mesh resource")
+	check(not Symmetry.evaluate(component_asset, [{"name": "wrong plane",
+		"first": "pair_front", "second": "pair_back", "axis": "z",
+		"center": 0.1, "tolerance": 0.0001}]).ok,
+		"scoped symmetry rejects a component pair that drifts off its declared plane")
+	var component_spec := AssetRecipe.normalize({"name": "component_test",
+		"assembly": component_asset, "require_surface_classification": true,
+		"symmetry": symmetry_contract})
+	var component_validation := BuildPipeline.validate(component_spec)
+	check(component_validation.ok and component_validation.surfaces.counts.has(
+		"prismatic:structural"),
+		"surface taxonomy selects type-specific validation for component parts")
 
 	var asset := Assembly.new()
 	mesh.surface_set_material(0, _material("body"))
@@ -94,6 +134,10 @@ func _initialize() -> void:
 	asset.add("mirror", mirrored, Transform3D(Basis.IDENTITY, Vector3(3.0, 0.0, 0.0)))
 	var result := Checks.evaluate(asset.parts, [Checks.require_gap("body", "mirror", 0.5)])
 	check(result.failures.is_empty(), "named gap check passes separated parts")
+	var depth_result := Checks.evaluate(asset.parts, [
+		Checks.require_axis_range("body", 2, 0.5, 3.0)])
+	check(depth_result.failures.is_empty(),
+		"named axis-range checks reject accidentally flattened geometry")
 	check(Checks.noclip(asset.parts).is_empty(), "noclip passes separated parts")
 
 	var spec := Zone.Spec.new(Vector2(20.0, 16.0), Vector2i(12, 10), 5)
@@ -155,8 +199,9 @@ func _initialize() -> void:
 	var manifest := ManifestExport.data(recipe, validation, {"glb": "named_test.glb"})
 	check(manifest.parts.size() == 3 and manifest.anchors.socket == [1.0, 2.0, 3.0],
 		"manifest preserves named parts and numeric anchors")
-	check(manifest.format_version == 4 and manifest.has("parameters") and manifest.has("attachments"),
-		"manifest records parameter provenance and geometry-sampled attachments")
+	check(manifest.format_version == 5 and manifest.has("parameters") and
+		manifest.has("attachments") and manifest.has("component_instances"),
+		"manifest records components, surface semantics, parameters, and attachments")
 
 	var glb_path := "user://polyforge_roundtrip.glb"
 	var export_error := GLTFExport.write_preserved("named_test", asset, glb_path)
