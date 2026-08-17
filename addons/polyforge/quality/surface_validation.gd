@@ -6,7 +6,7 @@ const SurfaceTypes := preload("res://addons/polyforge/core/surface_types.gd")
 static func _axes(size: Vector3) -> Array[float]:
 	return [size.x, size.y, size.z]
 
-static func evaluate(parts: Array, required := false) -> Dictionary:
+static func evaluate(parts: Array, required := false, require_extended := false) -> Dictionary:
 	var failures := PackedStringArray()
 	var warnings := PackedStringArray()
 	var measurements := []
@@ -17,7 +17,8 @@ static func evaluate(parts: Array, required := false) -> Dictionary:
 			if required:
 				failures.append("%s: surface classification is missing" % part.name)
 			continue
-		var descriptor_failures := SurfaceTypes.validate(descriptor)
+		var descriptor_failures := SurfaceTypes.validate_extended(descriptor) if require_extended \
+			else SurfaceTypes.validate(descriptor)
 		for failure in descriptor_failures:
 			failures.append("%s: %s" % [part.name, failure])
 		if not descriptor_failures.is_empty():

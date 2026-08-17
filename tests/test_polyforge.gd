@@ -14,6 +14,10 @@ const Checks := preload("res://addons/polyforge/quality/checks.gd")
 const Readability := preload("res://addons/polyforge/quality/readability.gd")
 const Symmetry := preload("res://addons/polyforge/quality/symmetry.gd")
 const TopologyBudget := preload("res://addons/polyforge/core/topology_budget.gd")
+const Rig := preload("res://addons/polyforge/core/rig.gd")
+const AnimationClip := preload("res://addons/polyforge/core/animation.gd")
+const RigValidation := preload("res://addons/polyforge/quality/rig_validation.gd")
+const SurfaceTypes := preload("res://addons/polyforge/core/surface_types.gd")
 const Zone := preload("res://addons/polyforge/terrain/zone.gd")
 const ViewerExport := preload("res://addons/polyforge/exporters/viewer_export.gd")
 const GLTFExport := preload("res://addons/polyforge/exporters/gltf_export.gd")
@@ -45,6 +49,10 @@ func _initialize() -> void:
 	check(TopologyBudget.sweep_subdivisions([
 		Vector3.ZERO, Vector3.RIGHT, Vector3(1.0, 1.0, 0.0)], runtime_quality) >= 2,
 		"adaptive sweep detail accounts for authored bend curvature")
+	var extended_surface := SurfaceTypes.classify("profile", "primary_silhouette",
+		"paired", "rigid", {"maximum_thickness_ratio": 0.2})
+	check(SurfaceTypes.validate_extended(extended_surface).is_empty(),
+		"part classification keeps construction, role, repetition, and motion orthogonal")
 
 	var poly = PolyMesh.lathe([
 		Vector2(0.0, -1.0), Vector2(0.8, -0.7), Vector2(1.0, 0.2), Vector2(0.0, 1.0)],
@@ -146,6 +154,19 @@ func _initialize() -> void:
 		"rendered_triangles": topology_stats.rendered_triangles - 1})
 	check(not topology_failure.ok and not topology_failure.failures.is_empty(),
 		"topology budgets reject unwaived rendered triangle overruns")
+	var test_rig := Rig.new()
+	test_rig.add_bone("root")
+	test_rig.add_bone("beam", "root", Transform3D(Basis.IDENTITY, Vector3(0.0, 0.0, 1.0)))
+	test_rig.bind_rigid("pair_front__core", "beam")
+	var test_clip := AnimationClip.new("test_cycle", 1.0, true, 30.0)
+	test_clip.add_key("beam", 0.0, Transform3D.IDENTITY)
+	test_clip.add_key("beam", 0.5, Transform3D(Basis(Vector3.FORWARD, 0.25), Vector3.ZERO))
+	test_clip.add_key("beam", 1.0, Transform3D.IDENTITY)
+	test_rig.add_clip(test_clip)
+	var test_rig_validation := RigValidation.evaluate(test_rig, component_asset)
+	check(test_rig_validation.ok and test_rig_validation.bones == 2 and
+		test_rig_validation.clips == 1,
+		"rig validation accepts a named rigid binding and closed animation loop")
 
 	var asset := Assembly.new()
 	mesh.surface_set_material(0, _material("body"))

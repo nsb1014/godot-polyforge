@@ -86,6 +86,7 @@ static func data(spec: Dictionary, validation: Dictionary, outputs: Dictionary) 
 		"triangles": total_triangles,
 		"triangle_budget": spec.triangle_budget,
 		"topology": validation.get("topology", {}),
+		"rig": spec.rig.snapshot() if spec.rig != null else {},
 		"materials": all_materials,
 		"parts": part_records,
 		"component_instances": spec.assembly.get("component_instances"),

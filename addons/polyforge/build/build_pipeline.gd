@@ -8,6 +8,7 @@ const Attachments := preload("res://addons/polyforge/core/attachments.gd")
 const SurfaceValidation := preload("res://addons/polyforge/quality/surface_validation.gd")
 const Symmetry := preload("res://addons/polyforge/quality/symmetry.gd")
 const TopologyBudget := preload("res://addons/polyforge/core/topology_budget.gd")
+const RigValidation := preload("res://addons/polyforge/quality/rig_validation.gd")
 const GLTFExport := preload("res://addons/polyforge/exporters/gltf_export.gd")
 const ManifestExport := preload("res://addons/polyforge/exporters/manifest_export.gd")
 const PreviewExport := preload("res://addons/polyforge/exporters/preview_export.gd")
@@ -93,7 +94,7 @@ static func validate(spec: Dictionary) -> Dictionary:
 	for measurement in attachment_validation.measurements:
 		measurements.append({"type": "attachment", "result": measurement})
 	var surface_validation := SurfaceValidation.evaluate(spec.assembly.parts,
-		bool(spec.require_surface_classification))
+		bool(spec.require_surface_classification), bool(spec.require_part_classification))
 	for failure in surface_validation.failures:
 		failures.append("surface: " + failure)
 	for warning in surface_validation.warnings:
@@ -105,6 +106,13 @@ static func validate(spec: Dictionary) -> Dictionary:
 		failures.append("symmetry: " + failure)
 	for measurement in symmetry_validation.measurements:
 		measurements.append({"type": "symmetry", "result": measurement})
+	var rig_validation := RigValidation.evaluate(spec.rig, spec.assembly)
+	for failure in rig_validation.failures:
+		failures.append("rig: " + failure)
+	for warning in rig_validation.warnings:
+		warnings.append("rig: " + warning)
+	for measurement in rig_validation.measurements:
+		measurements.append({"type": "rig", "result": measurement})
 	var bounds := _bounds(spec.assembly.parts)
 	var anchor_slack := maxf(bounds.size.x, maxf(bounds.size.y, bounds.size.z)) * 0.25
 	for anchor_name in spec.anchors:
@@ -123,6 +131,7 @@ static func validate(spec: Dictionary) -> Dictionary:
 		"surfaces": surface_validation,
 		"symmetry": symmetry_validation,
 		"topology": topology,
+		"rig": rig_validation,
 		"triangles": triangles,
 	}
 

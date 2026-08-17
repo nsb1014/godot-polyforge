@@ -23,6 +23,8 @@ static func defaults() -> Dictionary:
 		"readability": {},
 		"symmetry": [],
 		"require_surface_classification": false,
+		"require_part_classification": false,
+		"rig": null,
 		"front": "",
 		"loose": false,
 	}
