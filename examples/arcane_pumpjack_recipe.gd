@@ -118,7 +118,8 @@ func _derrick_bent(size: float, deck_y: float, pivot_y: float,
 	return bent
 
 func _walking_beam(size: float, front_length: float, rear_length: float,
-		frame_depth: float, stone: Material, trim: Material, dark: Material) -> RefCounted:
+		frame_depth: float, stone: Material, trim: Material, dark: Material,
+		arcane: Material) -> RefCounted:
 	var beam := Component.new("walking_beam_v3")
 	var total := front_length + rear_length
 	var center_x := (rear_length - front_length) * 0.5
@@ -165,6 +166,11 @@ func _walking_beam(size: float, front_length: float, rear_length: float,
 		frame_depth * 0.86, 10), trim), _xf(Vector3.ZERO, Vector3(90.0, 0.0, 0.0)),
 		_options("revolved", "interface", ["walking_beam", "moving", "pivot"], {
 			"motion": "rigid", "surface_options": {"axis": "y", "socket": "pivot"}}))
+	beam.add("pivot_lens", _part(Stock.cylinder(size * 0.047, size * 0.047,
+		size * 0.016, 5), arcane),
+		_xf(Vector3(0.0, 0.0, frame_depth * 0.47), Vector3(90.0, 0.0, 0.0)),
+		_options("revolved", "effect_anchor", ["walking_beam", "moving", "arcane"], {
+			"motion": "rigid", "surface_options": {"axis": "y"}}))
 	beam.define_socket("pivot", Transform3D.IDENTITY)
 	beam.define_socket("horsehead", _xf(Vector3(-front_length, 0.0, 0.0)))
 	return beam
@@ -326,14 +332,14 @@ func build(p) -> Dictionary:
 		asset.instance_component("rim_%02d" % index, rim,
 			_xf(position, Vector3(0.0, -rad_to_deg(angle), 0.0)))
 
-	_add(asset, "machine_plinth", _part(Stock.box(Vector3(size * 0.44,
-		size * 0.13, size * 0.34)), dark),
-		_xf(Vector3(size * 0.14, deck_y + size * 0.065, -size * 0.04)),
+	_add(asset, "machine_plinth", _part(Stock.box(Vector3(size * 0.36,
+		size * 0.10, size * 0.29)), stone),
+		_xf(Vector3(size * 0.14, deck_y + size * 0.050, -size * 0.04)),
 		"prismatic", "contact", ["foundation"], {
 			"surface_options": {"minimum_slenderness": 1.0}})
-	_add(asset, "machine_plinth_cap", _part(Stock.box(Vector3(size * 0.39,
-		size * 0.07, size * 0.29)), stone),
-		_xf(Vector3(size * 0.14, deck_y + size * 0.155, -size * 0.04)),
+	_add(asset, "machine_plinth_cap", _part(Stock.box(Vector3(size * 0.32,
+		size * 0.06, size * 0.25)), trim),
+		_xf(Vector3(size * 0.14, deck_y + size * 0.125, -size * 0.04)),
 		"prismatic", "contact", ["foundation", "machine"], {
 			"surface_options": {"minimum_slenderness": 1.0}})
 	var pump_center := Vector3(size * 0.10, deck_y + size * 0.23, -size * 0.05)
@@ -415,7 +421,7 @@ func build(p) -> Dictionary:
 	var rest: Dictionary = linkage.samples[0].frames
 
 	var walking := _walking_beam(size, front_length, rear_length, frame_depth,
-		stone, trim, dark)
+		stone, trim, dark, arcane)
 	asset.instance_component("walking_beam", walking, rest.walking_beam)
 	var horsehead := _horsehead(size, frame_depth, stone, trim, dark, arcane)
 	asset.instance_component("horsehead", horsehead, rest.horsehead)
