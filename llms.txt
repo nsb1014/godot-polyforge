@@ -26,6 +26,8 @@ func build(p) -> Dictionary:
 		"category": "prop",
 		"assembly": asset,
 		"triangle_budget": 4000,
+		"topology_budget": {"rendered_triangles": 4000, "unique_triangles": 3000},
+		"quality_profile": "runtime",
 		"checks": [],
 		"anchors": {},
 		"front": "+Z",
@@ -66,10 +68,18 @@ Godot before the build succeeds.
 - Use `--mode preserve` for movable/addressable parts, `merge` for static batching, or
   `both` when authoring and runtime needs differ.
 - Add structural and semantic checks before increasing detail.
+- Classify new parts across construction, role, repetition, and motion with
+  `SurfaceTypes.classify()`; set `require_part_classification` for strict recipes.
+- Choose rounded and swept segmentation through `TopologyBudget` at the intended play size.
+  Report both rendered and unique triangle budgets; repeated components count toward rendered
+  cost while sharing unique mesh storage.
+- For moving assets, return a `Rig` with named bones, bindings, looped clips, and motion reports.
+  Bake mechanical motion from constraints and validate fixed lengths, loop closure, and static
+  keepout clearance across the complete sample set.
 - Declare intentional intersections with `Assembly.allow_overlap()` before enabling
   `noclip` in the recipe.
 - Keep palettes, categories, density profiles, and output directories project-owned.
-- Inspect all four views. A correct canonical view does not prove the back and sides exist.
+- Inspect all eight octant views. A correct canonical view does not prove the back and sides exist.
 - Do not generate procedural geometry at game startup. Import the compiled GLB.
 
 ## Useful modules
@@ -77,6 +87,9 @@ Godot before the build succeeds.
 - `core/stock.gd`: named-recipe-friendly Godot primitive factories.
 - `core/mesh.gd`: lathes, extrusions, sweeps, heightfields, painting, and tagged surfaces.
 - `core/assembly.gd`: names, frames, transforms, overlap declarations, and merging.
+- `core/topology_budget.gd`: adaptive segment selection and rendered/unique triangle policies.
+- `core/rig.gd` and `core/animation.gd`: skeleton, skin binding, and clip authoring data.
+- `core/mechanical_constraints.gd`: four-bar sampling and motion-clearance validation.
 - `core/attachments.gd`: sampled surface frames, child bindings, and attachment drift checks.
 - `quality/lint_core.gd`: structural geometry validation and budgets.
 - `quality/checks.gd`: named-part relationships and intersection checks.

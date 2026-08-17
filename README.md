@@ -8,7 +8,8 @@ and compiles ordinary GLB assets through Godot itself. It has no Node, Three.js,
 palette, catalog, asset naming scheme, or output path dependency.
 
 `examples/arcane_pumpjack_recipe.gd` is the vapor-derrick reliability reference for reusable
-components, scoped symmetry, classified surfaces, interaction sweeps, and octant rendering.
+components, four-axis part classification, adaptive topology, constraint-baked animation,
+interaction sweeps, and eight-view rendering.
 
 ## Modules
 
@@ -21,7 +22,11 @@ components, scoped symmetry, classified surfaces, interaction sweeps, and octant
 | `core/palette.gd` | OKLab palette and dimension-grid snapping |
 | `core/assembly.gd` | Named subparts, reusable component instances, sockets, local frames, and merge |
 | `core/component.gd` | Nestable local-space component definitions with shared meshes and sockets |
-| `core/surface_types.gd` | Construction and functional-role surface taxonomy |
+| `core/surface_types.gd` | Orthogonal construction, role, repetition, and motion taxonomy |
+| `core/topology_budget.gd` | Play-size adaptive topology profiles and rendered/unique triangle accounting |
+| `core/rig.gd` | Skeleton bones, skin bindings, clips, and validated motion reports |
+| `core/animation.gd` | Deterministic named bone-transform animation clips |
+| `core/mechanical_constraints.gd` | Four-bar solving, loop baking, and swept-link clearance checks |
 | `core/asset_recipe.gd` | Project-owned recipe loading and normalized compiler contract |
 | `core/parameters.gd` | Validated primary measurements, derived-dimension provenance, overrides, and sweeps |
 | `core/attachments.gd` | Geometry-sampled surface frames, child bindings, provenance, and drift checks |
@@ -33,6 +38,7 @@ components, scoped symmetry, classified surfaces, interaction sweeps, and octant
 | `quality/readability.gd` | Play-size foreground, color-region, contrast, thickness, and silhouette measurements |
 | `quality/surface_validation.gd` | Surface-type-specific proportion and interface validation |
 | `quality/symmetry.gd` | Scoped component-reuse and reflection contracts |
+| `quality/rig_validation.gd` | Skeleton, skin, clip-loop, and mechanical report validation |
 | `terrain/zone.gd` | Landforms, spline cuts, surface rules, and constrained deterministic scatter |
 | `exporters/viewer_export.gd` | JSON and self-contained HTML export for the bundled WebGL viewer |
 | `exporters/gltf_export.gd` | Preserved/merged GLB export and Godot round-trip inspection |
@@ -141,7 +147,7 @@ agent authoring contract.
 Use `Component` for geometry that should remain identical wherever it is placed. Components can
 contain named parts, sockets, and nested component instances. `Assembly.instance_component()`
 flattens the hierarchy for ordinary Godot/GLB export while retaining component IDs, source-part
-names, instance paths, shared mesh identity, and sockets in manifest version 5.
+names, instance paths, shared mesh identity, and sockets in manifest version 6.
 
 ```gdscript
 const Component := preload("res://addons/polyforge/core/component.gd")
@@ -168,13 +174,25 @@ can remain outside the contract.
 
 ### Surface classification
 
-Parts may declare two independent surface fields: `construction` (`plate`, `prismatic`,
-`revolved`, `swept`, `lofted`, `shell`, `sculpted`, `repeated`, or `field`) and `role`
-(`structural`, `enclosure`, `interface`, `conduit`, `contact`, `silhouette`, `trim`,
-`deformable`, or `decorative`). Set `require_surface_classification` on a recipe to reject
-unclassified parts. PolyForge then selects relevant checks—for example plate thickness,
-prismatic slenderness, swept/conduit radius, revolved axis, or interface-socket metadata—without
-assuming that every asset genre has the same topology.
+Parts may declare four independent fields: `construction`, `role`, `repetition`, and `motion`.
+Use `SurfaceTypes.classify()` and set `require_part_classification` to enforce the complete
+taxonomy. The legacy `require_surface_classification` gate remains compatible with existing
+two-axis recipes. PolyForge selects relevant checks—for example profile thickness,
+prismatic slenderness, conduit radius, revolved axis, or interface-socket metadata—without
+assuming that every asset genre has the same topology or motion model.
+
+### Adaptive topology and rigging
+
+`TopologyBudget` chooses radial and bend segmentation from projected play-size error. A recipe
+can separately cap rendered triangles, unique mesh-resource triangles, and named component
+groups. Manifest v6 records the resulting policy and measurements instead of reducing repeated
+component instances to one ambiguous triangle count.
+
+Recipes may return a `Rig` containing Godot skeleton rests, rigid or deformable skin bindings,
+named `AnimationClip` tracks, and motion validation reports. Preserved GLB export emits a real
+`Skeleton3D`, `Skin`, and `AnimationPlayer`; the bundled viewer exposes play, pause, and reset for
+the same clips. `MechanicalConstraints.solve_four_bar()` produces deterministic samples and
+`validate_clearance()` checks moving link lanes against authored static keepouts.
 
 ### Variable measurements
 

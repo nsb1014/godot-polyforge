@@ -79,6 +79,29 @@ jobs:
         continue-on-error: true
         run: 'timeout --kill-after=15s 180s "$GODOT_BIN" --headless --path . --script res://tests/test_polyforge.gd'
 
+      - name: Verify rigged review artifact contract
+        id: artifact_contract
+        continue-on-error: true
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          root = Path("dist/base")
+          manifest = json.loads((root / "arcane_pumpjack.manifest.json").read_text())
+          assert manifest["format_version"] == 6
+          topology = manifest["topology"]["statistics"]
+          assert topology["rendered_triangles"] <= 5500
+          assert topology["unique_triangles"] <= 4000
+          rig = manifest["rig"]
+          assert any(clip["name"] == "pump_cycle" and clip["loop"] for clip in rig["clips"])
+          assert len(rig["bones"]) >= 8
+          assert all(report["report"]["ok"] for report in rig["motion_reports"])
+          for name in ("arcane_pumpjack.glb", "arcane_pumpjack_viewer.json",
+                       "arcane_pumpjack_viewer.html", "arcane_pumpjack_turntable.png"):
+              assert (root / name).stat().st_size > 0
+          PY
+
       - name: Upload model, viewer, manifest, and render
         uses: actions/upload-artifact@v4
         with:
@@ -101,3 +124,4 @@ jobs:
           test "${{ steps.base_render.outcome }}" = success
           test "${{ steps.sweep_render.outcome }}" = success
           test "${{ steps.regression.outcome }}" = success
+          test "${{ steps.artifact_contract.outcome }}" = success

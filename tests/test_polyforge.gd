@@ -277,9 +277,10 @@ func _initialize() -> void:
 	var manifest := ManifestExport.data(recipe, validation, {"glb": "named_test.glb"})
 	check(manifest.parts.size() == 3 and manifest.anchors.socket == [1.0, 2.0, 3.0],
 		"manifest preserves named parts and numeric anchors")
-	check(manifest.format_version == 5 and manifest.has("parameters") and
-		manifest.has("attachments") and manifest.has("component_instances"),
-		"manifest records components, surface semantics, parameters, and attachments")
+	check(manifest.format_version == 6 and manifest.has("parameters") and
+		manifest.has("attachments") and manifest.has("component_instances") and
+		manifest.has("topology") and manifest.has("rig"),
+		"manifest v6 records components, topology, rig data, and authored metadata")
 
 	var glb_path := "user://polyforge_roundtrip.glb"
 	var export_error := GLTFExport.write_preserved("named_test", asset, glb_path)

@@ -77,7 +77,7 @@ static func data(spec: Dictionary, validation: Dictionary, outputs: Dictionary) 
 		})
 	var manifest := {
 		"format": "godot-polyforge-manifest",
-		"format_version": 5,
+		"format_version": 6,
 		"generator": "Godot PolyForge",
 		"name": spec.name,
 		"category": spec.category,
