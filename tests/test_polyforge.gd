@@ -23,6 +23,7 @@ const Zone := preload("res://addons/polyforge/terrain/zone.gd")
 const ViewerExport := preload("res://addons/polyforge/exporters/viewer_export.gd")
 const GLTFExport := preload("res://addons/polyforge/exporters/gltf_export.gd")
 const ManifestExport := preload("res://addons/polyforge/exporters/manifest_export.gd")
+const PreviewExport := preload("res://addons/polyforge/exporters/preview_export.gd")
 const BuildPipeline := preload("res://addons/polyforge/build/build_pipeline.gd")
 
 var failures := 0
@@ -125,6 +126,10 @@ func _initialize() -> void:
 	check(not multiview.ok and multiview.worst_view == 0.0 and
 		str(multiview.issues[0]).begins_with("view 180°"),
 		"multi-view aggregation preserves angle-qualified semantic failures")
+	var id_image := Image.create(1, 1, false, Image.FORMAT_RGBA8)
+	id_image.set_pixel(0, 0, Color(0.0, 0.62, 0.0, 1.0))
+	check(PreviewExport._count_color(id_image, Color.LIME) == 1,
+		"visibility ID masks compare chroma independently of tone-mapped luminance")
 	var paired_visibility := Readability.aggregate_views([
 		{"yaw": 0.0, "readability": readability, "issues": PackedStringArray(),
 			"part_visibility": {"front": {"visible_fraction": 0.72}}},

@@ -441,7 +441,8 @@ func build(p) -> Dictionary:
 			"minimum_stroke_px": 1.0, "required": true,
 			"critical_parts": {
 				"derrick_front": {"minimum_visible_fraction": 0.06,
-					"members": asset.part_names_for_instance("derrick_front")},
+					"members": asset.part_names_for_instance("derrick_front"),
+					"views": [0.0, 45.0, 315.0]},
 				"walking_beam": {"minimum_visible_fraction": 0.08,
 					"members": asset.part_names_for_instance("walking_beam")},
 				"horsehead": {"minimum_visible_fraction": 0.07,

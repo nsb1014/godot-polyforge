@@ -114,14 +114,23 @@ static func _id_material(color: Color) -> StandardMaterial3D:
 	material.albedo_color = color
 	return material
 
-static func _count_color(image: Image, color: Color, tolerance := 0.08) -> int:
+static func _count_color(image: Image, color: Color, tolerance := 0.14) -> int:
 	if image == null or image.is_empty():
 		return 0
 	var count := 0
+	var target := Vector3(color.r, color.g, color.b)
+	var target_length := target.length()
+	if target_length <= 0.0001:
+		return 0
+	target /= target_length
 	for y in range(image.get_height()):
 		for x in range(image.get_width()):
 			var pixel := image.get_pixel(x, y)
-			if absf(pixel.r - color.r) + absf(pixel.g - color.g) + absf(pixel.b - color.b) <= tolerance:
+			var sample := Vector3(pixel.r, pixel.g, pixel.b)
+			# ID materials are unshaded, but filmic tone mapping can still change their
+			# luminance. Compare chroma direction so a scaled lime remains lime while
+			# black blockers and the neutral studio background remain excluded.
+			if sample.length() > 0.08 and sample.normalized().distance_to(target) <= tolerance:
 				count += 1
 	return count
 
