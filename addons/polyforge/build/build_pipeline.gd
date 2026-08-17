@@ -256,7 +256,7 @@ static func run(tree: SceneTree, spec: Dictionary, supplied_options := {}) -> Di
 		return result
 	var readability_policy := _readability_policy(spec, options)
 	if bool(options.measure_readability) and bool(readability_policy.enabled):
-		var readability_scene := GLTFExport.scene_from_parts(spec.name, spec.assembly.parts)
+		var readability_scene := GLTFExport.scene_from_parts(spec.name, spec.assembly.parts, spec.rig)
 		var readability := await PreviewExport.measure_readability(
 			tree, readability_scene, _bounds(spec.assembly.parts), readability_policy)
 		validation.readability = readability
@@ -270,7 +270,7 @@ static func run(tree: SceneTree, spec: Dictionary, supplied_options := {}) -> Di
 				var case_spec: Dictionary = test_case.spec
 				var case_policy := _readability_policy(case_spec, options, true)
 				var case_scene := GLTFExport.scene_from_parts(
-					case_spec.name, case_spec.assembly.parts)
+					case_spec.name, case_spec.assembly.parts, case_spec.rig)
 				var case_readability := await PreviewExport.measure_readability(
 					tree, case_scene, _bounds(case_spec.assembly.parts), case_policy)
 				validation.parameter_sweep[case_index].readability = case_readability
@@ -295,7 +295,8 @@ static func run(tree: SceneTree, spec: Dictionary, supplied_options := {}) -> Di
 	if bool(options.write_glb):
 		if options.mode == "preserve" or options.mode == "both":
 			var preserved_path: String = str(options.out_dir).path_join(base + ".glb")
-			var preserve_error := GLTFExport.write_preserved(spec.name, spec.assembly, preserved_path)
+			var preserve_error := GLTFExport.write_preserved(
+				spec.name, spec.assembly, preserved_path, spec.rig)
 			_record_error(result, "preserved GLB export", preserve_error)
 			if preserve_error == OK:
 				result.outputs.glb = preserved_path
@@ -333,7 +334,7 @@ static func run(tree: SceneTree, spec: Dictionary, supplied_options := {}) -> Di
 			result.outputs.viewer_html = viewer_html
 	if bool(options.write_preview):
 		var preview_path: String = str(options.out_dir).path_join(base + "_turntable.png")
-		var scene := GLTFExport.scene_from_parts(spec.name, spec.assembly.parts)
+		var scene := GLTFExport.scene_from_parts(spec.name, spec.assembly.parts, spec.rig)
 		var preview := await PreviewExport.render_contact_sheet(
 			tree, scene, _bounds(spec.assembly.parts), preview_path,
 			Vector2i(420, 500), str(readability_policy.view_set))

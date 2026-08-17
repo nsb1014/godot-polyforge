@@ -167,6 +167,21 @@ func _initialize() -> void:
 	check(test_rig_validation.ok and test_rig_validation.bones == 2 and
 		test_rig_validation.clips == 1,
 		"rig validation accepts a named rigid binding and closed animation loop")
+	var rig_scene := GLTFExport.scene_from_parts("rig_test", component_asset.parts, test_rig)
+	check(rig_scene.get_node_or_null("Skeleton3D") is Skeleton3D and
+		rig_scene.get_node_or_null("AnimationPlayer") is AnimationPlayer,
+		"rigged scene creation emits real Godot skeleton and animation nodes")
+	rig_scene.free()
+	var rig_glb_path := "user://polyforge_rig_roundtrip.glb"
+	var rig_export_error := GLTFExport.write_preserved(
+		"rig_test", component_asset, rig_glb_path, test_rig)
+	check(rig_export_error == OK, "Godot writes a rigged GLB")
+	if rig_export_error == OK:
+		var rig_inspection := GLTFExport.inspect(rig_glb_path)
+		check(rig_inspection.ok and rig_inspection.skeleton_count == 1 and
+			rig_inspection.bones.has("beam") and rig_inspection.animations.has("test_cycle"),
+			"GLB round trip preserves skeleton, bone names, and clip names")
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(rig_glb_path))
 
 	var asset := Assembly.new()
 	mesh.surface_set_material(0, _material("body"))
