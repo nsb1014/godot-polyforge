@@ -13,6 +13,7 @@ const Lint := preload("res://addons/polyforge/quality/lint_core.gd")
 const Checks := preload("res://addons/polyforge/quality/checks.gd")
 const Readability := preload("res://addons/polyforge/quality/readability.gd")
 const Symmetry := preload("res://addons/polyforge/quality/symmetry.gd")
+const TopologyBudget := preload("res://addons/polyforge/core/topology_budget.gd")
 const Zone := preload("res://addons/polyforge/terrain/zone.gd")
 const ViewerExport := preload("res://addons/polyforge/exporters/viewer_export.gd")
 const GLTFExport := preload("res://addons/polyforge/exporters/gltf_export.gd")
@@ -33,6 +34,18 @@ func _material(name: String) -> StandardMaterial3D:
 	return material
 
 func _initialize() -> void:
+	var preview_quality := TopologyBudget.profile("preview")
+	var runtime_quality := TopologyBudget.profile("runtime")
+	var hero_quality := TopologyBudget.profile("hero")
+	var preview_segments := TopologyBudget.radial_segments(40.0, preview_quality)
+	var runtime_segments := TopologyBudget.radial_segments(40.0, runtime_quality)
+	var hero_segments := TopologyBudget.radial_segments(40.0, hero_quality)
+	check(preview_segments <= runtime_segments and runtime_segments <= hero_segments,
+		"adaptive radial detail is deterministic and monotonic across quality profiles")
+	check(TopologyBudget.sweep_subdivisions([
+		Vector3.ZERO, Vector3.RIGHT, Vector3(1.0, 1.0, 0.0)], runtime_quality) >= 2,
+		"adaptive sweep detail accounts for authored bend curvature")
+
 	var poly = PolyMesh.lathe([
 		Vector2(0.0, -1.0), Vector2(0.8, -0.7), Vector2(1.0, 0.2), Vector2(0.0, 1.0)],
 		12, 0.0, 7)
@@ -126,6 +139,13 @@ func _initialize() -> void:
 	check(component_validation.ok and component_validation.surfaces.counts.has(
 		"prismatic:structural"),
 		"surface taxonomy selects type-specific validation for component parts")
+	var topology_stats := TopologyBudget.statistics(component_asset.parts)
+	check(topology_stats.rendered_triangles == topology_stats.unique_triangles * 2,
+		"topology statistics separate rendered instances from shared stored geometry")
+	var topology_failure := TopologyBudget.evaluate(component_asset.parts, {
+		"rendered_triangles": topology_stats.rendered_triangles - 1})
+	check(not topology_failure.ok and not topology_failure.failures.is_empty(),
+		"topology budgets reject unwaived rendered triangle overruns")
 
 	var asset := Assembly.new()
 	mesh.surface_set_material(0, _material("body"))

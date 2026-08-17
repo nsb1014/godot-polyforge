@@ -12,6 +12,8 @@ static func defaults() -> Dictionary:
 		"category": "prop",
 		"assembly": null,
 		"triangle_budget": -1,
+		"topology_budget": {},
+		"quality_profile": "runtime",
 		"checks": [],
 		"noclip": false,
 		"anchors": {},
@@ -44,6 +46,9 @@ static func normalize(raw, source_path := "") -> Dictionary:
 	assert(spec.parameters is Dictionary, "recipe parameters must be a Dictionary")
 	assert(spec.readability is Dictionary, "recipe readability policy must be a Dictionary")
 	assert(spec.symmetry is Array, "recipe symmetry contracts must be an Array")
+	assert(spec.topology_budget is Dictionary, "recipe topology budget must be a Dictionary")
+	assert(str(spec.quality_profile) in ["preview", "runtime", "hero"],
+		"recipe quality_profile must be preview, runtime, or hero")
 	return spec
 
 static func _method_argument_count(provider, method_name: String) -> int:

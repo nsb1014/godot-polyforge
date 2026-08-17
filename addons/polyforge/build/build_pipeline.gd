@@ -7,6 +7,7 @@ const Readability := preload("res://addons/polyforge/quality/readability.gd")
 const Attachments := preload("res://addons/polyforge/core/attachments.gd")
 const SurfaceValidation := preload("res://addons/polyforge/quality/surface_validation.gd")
 const Symmetry := preload("res://addons/polyforge/quality/symmetry.gd")
+const TopologyBudget := preload("res://addons/polyforge/core/topology_budget.gd")
 const GLTFExport := preload("res://addons/polyforge/exporters/gltf_export.gd")
 const ManifestExport := preload("res://addons/polyforge/exporters/manifest_export.gd")
 const PreviewExport := preload("res://addons/polyforge/exporters/preview_export.gd")
@@ -66,8 +67,14 @@ static func validate(spec: Dictionary) -> Dictionary:
 		for failure in part_failures:
 			failures.append("%s: %s" % [part.name, failure])
 		triangles += Lint.triangle_count(part.mesh)
-	if int(spec.triangle_budget) > 0 and triangles > int(spec.triangle_budget):
-		failures.append("triangle budget: %d triangles > %d" % [triangles, spec.triangle_budget])
+	var topology_policy: Dictionary = spec.topology_budget.duplicate(true)
+	topology_policy.quality_profile = spec.quality_profile
+	var topology := TopologyBudget.evaluate(spec.assembly.parts, topology_policy,
+		int(spec.triangle_budget))
+	for failure in topology.failures:
+		failures.append("topology: " + failure)
+	for warning in topology.warnings:
+		warnings.append("topology: " + warning)
 	if not spec.checks.is_empty():
 		var semantic := Checks.evaluate(spec.assembly.parts, spec.checks)
 		for failure in semantic.failures:
@@ -115,6 +122,7 @@ static func validate(spec: Dictionary) -> Dictionary:
 		"attachments": attachment_validation,
 		"surfaces": surface_validation,
 		"symmetry": symmetry_validation,
+		"topology": topology,
 		"triangles": triangles,
 	}
 
