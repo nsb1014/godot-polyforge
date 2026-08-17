@@ -18,6 +18,7 @@ const Rig := preload("res://addons/polyforge/core/rig.gd")
 const AnimationClip := preload("res://addons/polyforge/core/animation.gd")
 const RigValidation := preload("res://addons/polyforge/quality/rig_validation.gd")
 const SurfaceTypes := preload("res://addons/polyforge/core/surface_types.gd")
+const MechanicalConstraints := preload("res://addons/polyforge/core/mechanical_constraints.gd")
 const Zone := preload("res://addons/polyforge/terrain/zone.gd")
 const ViewerExport := preload("res://addons/polyforge/exporters/viewer_export.gd")
 const GLTFExport := preload("res://addons/polyforge/exporters/gltf_export.gd")
@@ -53,6 +54,14 @@ func _initialize() -> void:
 		"paired", "rigid", {"maximum_thickness_ratio": 0.2})
 	check(SurfaceTypes.validate_extended(extended_surface).is_empty(),
 		"part classification keeps construction, role, repetition, and motion orthogonal")
+	var linkage := MechanicalConstraints.solve_four_bar({
+		"crank_center": Vector2(0.0, 0.0), "beam_pivot": Vector2(2.0, 1.6),
+		"crank_radius": 0.45, "beam_rear_length": 1.6, "beam_front_length": 2.2,
+		"pitman_length": 2.0, "branch_sign": 1.0,
+	}, 64)
+	check(linkage.ok and linkage.samples.size() == 65 and
+		linkage.maximum_fixed_length_error < 0.00001 and linkage.loop_closure_error < 0.00001,
+		"constraint-baked four-bar motion stays connected and closes its loop")
 
 	var poly = PolyMesh.lathe([
 		Vector2(0.0, -1.0), Vector2(0.8, -0.7), Vector2(1.0, 0.2), Vector2(0.0, 1.0)],
@@ -163,6 +172,8 @@ func _initialize() -> void:
 	test_clip.add_key("beam", 0.5, Transform3D(Basis(Vector3.FORWARD, 0.25), Vector3.ZERO))
 	test_clip.add_key("beam", 1.0, Transform3D.IDENTITY)
 	test_rig.add_clip(test_clip)
+	test_rig.add_motion_report("test_linkage", linkage,
+		{"fixed_length": 0.00001, "loop_closure": 0.00001})
 	var test_rig_validation := RigValidation.evaluate(test_rig, component_asset)
 	check(test_rig_validation.ok and test_rig_validation.bones == 2 and
 		test_rig_validation.clips == 1,
@@ -209,6 +220,10 @@ func _initialize() -> void:
 	check(viewer.verts.size() > 0 and viewer.tris.size() > 0, "viewer export contains geometry")
 	check(viewer.bones.size() == 1 and viewer.skin.size() == viewer.verts.size() / 3,
 		"static viewer contract supplies root skin")
+	var rigged_viewer := ViewerExport.assembly_data(component_asset, test_rig, "rig_test")
+	check(rigged_viewer.bones.size() == 2 and rigged_viewer.anims.size() == 1 and
+		rigged_viewer.anims[0].tracks[1].size() == 3,
+		"viewer contract includes rig bindings and sampled animation transforms")
 
 	var stock_box := Stock.with_material(Stock.box(Vector3.ONE), _material("stock"))
 	asset.add("stock_box", stock_box, Transform3D(Basis.IDENTITY, Vector3(6.0, 0.0, 0.0)))

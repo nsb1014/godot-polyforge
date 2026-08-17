@@ -81,6 +81,25 @@ static func evaluate(rig, assembly, loop_tolerance := 0.0001) -> Dictionary:
 				if error > loop_tolerance:
 					failures.append("clip %s bone %s loop error %.6f exceeds %.6f" % [
 						clip.name, bone_name, error, loop_tolerance])
+	for motion in rig.motion_reports:
+		var report: Dictionary = motion.report
+		var tolerances: Dictionary = motion.tolerances
+		if not bool(report.get("ok", false)):
+			failures.append("motion %s did not solve: %s" % [motion.name,
+				str(report.get("error", "unknown constraint failure"))])
+			continue
+		for entry in [
+			["maximum_fixed_length_error", float(tolerances.get("fixed_length", 0.0001))],
+			["loop_closure_error", float(tolerances.get("loop_closure", loop_tolerance))],
+		]:
+			var field := str(entry[0])
+			var maximum := float(entry[1])
+			var value := float(report.get(field, INF))
+			measurements.append({"motion": motion.name, "type": field,
+				"value": value, "maximum": maximum})
+			if value > maximum:
+				failures.append("motion %s %s %.6f exceeds %.6f" % [
+					motion.name, field, value, maximum])
 	return {"ok": failures.is_empty(), "failures": failures, "warnings": warnings,
 		"measurements": measurements, "bones": rig.bones.size(),
 		"bindings": rig.bindings.size(), "clips": rig.clips.size()}

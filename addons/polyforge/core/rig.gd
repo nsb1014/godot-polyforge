@@ -4,6 +4,7 @@ extends RefCounted
 var bones: Array[Dictionary] = []
 var bindings: Dictionary = {}
 var clips: Array = []
+var motion_reports: Array[Dictionary] = []
 
 func bone_index(name: String) -> int:
 	for index in range(bones.size()):
@@ -39,8 +40,14 @@ func add_clip(clip) -> void:
 		assert(str(existing.name) != str(clip.name), "duplicate animation clip: " + str(clip.name))
 	clips.append(clip)
 
+func add_motion_report(name: String, report: Dictionary, tolerances := {}) -> void:
+	assert(name != "", "motion reports require a stable name")
+	motion_reports.append({"name": name, "report": report,
+		"tolerances": tolerances.duplicate(true)})
+
 func snapshot() -> Dictionary:
 	var clip_records := []
 	for clip in clips:
 		clip_records.append(clip.snapshot())
-	return {"bones": bones, "bindings": bindings, "clips": clip_records}
+	return {"bones": bones, "bindings": bindings, "clips": clip_records,
+		"motion_reports": motion_reports}

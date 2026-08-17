@@ -320,15 +320,15 @@ static func run(tree: SceneTree, spec: Dictionary, supplied_options := {}) -> Di
 					result.validation.ok = false
 					result.export_ok = false
 	if bool(options.write_viewer):
-		merged = spec.assembly.merged_mesh()
 		var viewer_json: String = str(options.out_dir).path_join(base + "_viewer.json")
 		var viewer_html: String = str(options.out_dir).path_join(base + "_viewer.html")
-		var viewer_error := ViewerExport.write_json(merged, viewer_json, spec.name)
+		var viewer_error := ViewerExport.write_json(
+			spec.assembly, viewer_json, spec.name, spec.rig)
 		_record_error(result, "viewer JSON export", viewer_error)
 		if viewer_error == OK:
 			result.outputs.viewer_json = viewer_json
 		viewer_error = ViewerExport.write_embedded_html(
-			merged, options.viewer_template, viewer_html, spec.name)
+			spec.assembly, options.viewer_template, viewer_html, spec.name, spec.rig)
 		_record_error(result, "embedded viewer export", viewer_error)
 		if viewer_error == OK:
 			result.outputs.viewer_html = viewer_html
