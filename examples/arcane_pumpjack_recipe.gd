@@ -122,54 +122,104 @@ func _walking_beam(size: float, front_length: float, rear_length: float,
 	var beam := Component.new("walking_beam_v3")
 	var total := front_length + rear_length
 	var center_x := (rear_length - front_length) * 0.5
-	var rail_mesh := _part(Stock.box(Vector3(total, size * 0.065, size * 0.042)), stone)
+	var plate_outline := [
+		Vector2(-front_length, size * 0.055),
+		Vector2(rear_length * 0.84, size * 0.075),
+		Vector2(rear_length, size * 0.025),
+		Vector2(rear_length * 0.90, -size * 0.080),
+		Vector2(-front_length * 0.92, -size * 0.070),
+	]
+	var inset_outline := [
+		Vector2(-front_length * 0.72, size * 0.020),
+		Vector2(rear_length * 0.66, size * 0.034),
+		Vector2(rear_length * 0.78, size * 0.002),
+		Vector2(rear_length * 0.70, -size * 0.036),
+		Vector2(-front_length * 0.68, -size * 0.032),
+	]
+	var plate_mesh := _profile_mesh(plate_outline, size * 0.035, stone)
+	var inset_mesh := _profile_mesh(inset_outline, size * 0.010, dark)
 	for side in [-1.0, 1.0]:
-		var name := "front_rail" if side > 0.0 else "back_rail"
-		beam.add(name, rail_mesh, _xf(Vector3(center_x, 0.0, float(side) * frame_depth * 0.32)),
-			_options("prismatic", "primary_silhouette", ["walking_beam", "moving"], {
+		var name := "front_plate" if side > 0.0 else "back_plate"
+		beam.add(name, plate_mesh, _xf(Vector3(0.0, 0.0, float(side) * frame_depth * 0.27)),
+			_options("profile", "primary_silhouette", ["walking_beam", "moving"], {
 				"repetition": "paired", "motion": "rigid",
-				"surface_options": {"minimum_slenderness": 2.0}}))
+				"surface_options": {"maximum_thickness_ratio": 0.18}}))
+		beam.add("front_inset" if side > 0.0 else "back_inset", inset_mesh,
+			_xf(Vector3(0.0, 0.0, float(side) * frame_depth * 0.36)),
+			_options("profile", "decorative", ["walking_beam", "moving", "inset"], {
+				"repetition": "paired", "motion": "rigid",
+				"surface_options": {"maximum_thickness_ratio": 0.12}}))
 	beam.add("spine", _part(Stock.box(Vector3(total * 0.92, size * 0.10,
-		frame_depth * 0.22)), dark), _xf(Vector3(center_x, 0.0, 0.0)),
+		frame_depth * 0.38)), stone), _xf(Vector3(center_x, 0.0, 0.0)),
 		_options("prismatic", "mechanism", ["walking_beam", "moving"], {
 			"motion": "rigid", "surface_options": {"minimum_slenderness": 2.0}}))
-	var rib_mesh := _part(Stock.box(Vector3(size * 0.045, size * 0.085,
-		frame_depth * 0.72)), trim)
+	var rib_mesh := _part(Stock.box(Vector3(size * 0.050, size * 0.11,
+		frame_depth * 0.74)), trim)
 	for index in range(3):
 		var x := lerpf(-front_length * 0.72, rear_length * 0.72, float(index) / 2.0)
 		beam.add("rib_%02d" % index, rib_mesh, _xf(Vector3(x, 0.0, 0.0)),
 			_options("prismatic", "mechanism", ["walking_beam", "moving"], {
-				"repetition": "centered", "motion": "rigid"}))
+				"repetition": "centered", "motion": "rigid",
+				"surface_options": {"minimum_slenderness": 1.40}}))
+	beam.add("pivot_boss", _part(Stock.cylinder(size * 0.090, size * 0.090,
+		frame_depth * 0.86, 10), trim), _xf(Vector3.ZERO, Vector3(90.0, 0.0, 0.0)),
+		_options("revolved", "interface", ["walking_beam", "moving", "pivot"], {
+			"motion": "rigid", "surface_options": {"axis": "y", "socket": "pivot"}}))
 	beam.define_socket("pivot", Transform3D.IDENTITY)
 	beam.define_socket("horsehead", _xf(Vector3(-front_length, 0.0, 0.0)))
 	return beam
 
 func _horsehead(size: float, frame_depth: float, stone: Material,
-		trim: Material, arcane: Material) -> RefCounted:
+		trim: Material, dark: Material, arcane: Material) -> RefCounted:
 	var head := Component.new("horsehead_v3")
 	var outline := [
-		Vector2(-size * 0.035, size * 0.12), Vector2(size * 0.095, size * 0.08),
-		Vector2(size * 0.13, -size * 0.02), Vector2(size * 0.10, -size * 0.18),
-		Vector2(size * 0.015, -size * 0.27), Vector2(-size * 0.075, -size * 0.22),
-		Vector2(-size * 0.055, -size * 0.06),
+		Vector2(-size * 0.060, size * 0.18), Vector2(size * 0.090, size * 0.16),
+		Vector2(size * 0.140, size * 0.10), Vector2(size * 0.165, 0.0),
+		Vector2(size * 0.150, -size * 0.13), Vector2(size * 0.095, -size * 0.25),
+		Vector2(size * 0.015, -size * 0.32), Vector2(-size * 0.075, -size * 0.29),
+		Vector2(-size * 0.115, -size * 0.18), Vector2(-size * 0.095, -size * 0.02),
 	]
-	var plate_mesh := _profile_mesh(outline, size * 0.026, stone)
+	var inner_outline := [
+		Vector2(-size * 0.025, size * 0.135), Vector2(size * 0.065, size * 0.12),
+		Vector2(size * 0.105, size * 0.06), Vector2(size * 0.115, -size * 0.06),
+		Vector2(size * 0.080, -size * 0.19), Vector2(size * 0.010, -size * 0.255),
+		Vector2(-size * 0.045, -size * 0.23), Vector2(-size * 0.070, -size * 0.13),
+		Vector2(-size * 0.060, -size * 0.01),
+	]
+	var plate_mesh := _profile_mesh(outline, size * 0.032, trim)
+	var face_mesh := _profile_mesh(inner_outline, size * 0.016, stone)
 	for side in [-1.0, 1.0]:
 		var name := "front_plate" if side > 0.0 else "back_plate"
 		head.add(name, plate_mesh, _xf(Vector3(0.0, 0.0, float(side) * frame_depth * 0.31)),
 			_options("profile", "primary_silhouette", ["horsehead", "moving"], {
 				"repetition": "paired", "motion": "rigid",
 				"surface_options": {"maximum_thickness_ratio": 0.18}}))
-	var spacer := _part(Stock.box(Vector3(size * 0.05, size * 0.05,
+		head.add("front_face" if side > 0.0 else "back_face", face_mesh,
+			_xf(Vector3(0.0, 0.0, float(side) * frame_depth * 0.36)),
+			_options("profile", "trim", ["horsehead", "moving"], {
+				"repetition": "paired", "motion": "rigid",
+				"surface_options": {"maximum_thickness_ratio": 0.14}}))
+		var face_z := float(side) * frame_depth * 0.405
+		head.add("front_slot" if side > 0.0 else "back_slot",
+			_part(Stock.box(Vector3(size * 0.040, size * 0.175, size * 0.012)), dark),
+			_xf(Vector3(size * 0.025, -size * 0.045, face_z), Vector3(0.0, 0.0, -8.0)),
+			_options("prismatic", "decorative", ["horsehead", "moving", "slot"], {
+				"repetition": "paired", "motion": "rigid"}))
+		for gem_index in range(2):
+			var gem_y := size * (0.085 if gem_index == 0 else -0.205)
+			head.add(("front_gem" if side > 0.0 else "back_gem") + "_%02d" % gem_index,
+				_part(Stock.cylinder(size * 0.028, size * 0.028, size * 0.018, 8), arcane),
+				_xf(Vector3(size * 0.020, gem_y, face_z), Vector3(90.0, 0.0, 0.0)),
+				_options("revolved", "effect_anchor", ["horsehead", "moving", "arcane"], {
+					"repetition": "paired", "motion": "rigid",
+					"surface_options": {"axis": "y"}}))
+	var spacer := _part(Stock.box(Vector3(size * 0.055, size * 0.055,
 		frame_depth * 0.64)), trim)
 	for index in range(3):
 		head.add("spacer_%02d" % index, spacer,
 			_xf(Vector3(size * (0.015 + index * 0.025), size * (0.03 - index * 0.10), 0.0)),
 			_options("prismatic", "mechanism", ["horsehead", "moving"], {
 				"repetition": "centered", "motion": "rigid"}))
-	head.add("vapor_lens", _part(Stock.sphere(size * 0.045, 8, 4), arcane),
-		_xf(Vector3(size * 0.025, -size * 0.08, 0.0)),
-		_options("organic", "effect_anchor", ["horsehead", "arcane"], {"motion": "rigid"}))
 	return head
 
 func _tank_component(size: float, radius: float, stone: Material,
@@ -179,7 +229,7 @@ func _tank_component(size: float, radius: float, stone: Material,
 		Transform3D.IDENTITY, _options("organic", "enclosure", ["tank", "arcane"], {
 			"repetition": "paired"}))
 	tank.add("base", _part(Stock.cylinder(radius * 1.12, radius * 1.12,
-		size * 0.07, radial_segments), dark), _xf(Vector3(0.0, -radius * 1.08, 0.0)),
+		size * 0.07, radial_segments), stone), _xf(Vector3(0.0, -radius * 1.08, 0.0)),
 		_options("revolved", "contact", ["tank", "mount"], {
 			"repetition": "paired", "surface_options": {"axis": "y"}}))
 	tank.add("cap", _part(Stock.cylinder(radius * 1.10, radius * 0.92,
@@ -189,6 +239,11 @@ func _tank_component(size: float, radius: float, stone: Material,
 	tank.add("band", _part(Stock.torus(radius * 0.88, radius * 1.05,
 		radial_segments, 4), stone), _xf(Vector3(0.0, -radius * 0.58, 0.0)),
 		_options("revolved", "trim", ["tank"], {"repetition": "paired",
+			"surface_options": {"axis": "y"}}))
+	tank.add("lid", _part(Stock.cylinder(radius * 0.52, radius * 0.52,
+		size * 0.055, radial_segments), dark),
+		_xf(Vector3(0.0, radius * 1.20, 0.0)),
+		_options("revolved", "trim", ["tank", "lid"], {"repetition": "paired",
 			"surface_options": {"axis": "y"}}))
 	tank.define_socket("feed", _xf(Vector3(0.0, radius * 1.14, 0.0)))
 	return tank
@@ -202,6 +257,11 @@ func _add_pipe(asset, name: String, points: Array, radius: float,
 			_part(Stock.cylinder(radius, radius, a.distance_to(b), radial_segments), material),
 			_between_y(a, b), "swept", "conduit", ["pipe"], {
 				"surface_options": {"radius": radius}})
+	for index in range(1, points.size() - 1):
+		_add(asset, "%s_elbow_%02d" % [name, index],
+			_part(Stock.sphere(radius * 1.10, radial_segments, 4), material),
+			_xf(points[index]), "organic", "conduit", ["pipe", "elbow"], {
+				"repetition": "centered", "surface_options": {"radius": radius}})
 
 func _bind_instance(rig, asset, instance_name: String, bone_name: String) -> void:
 	for part_name in asset.part_names_for_instance(instance_name):
@@ -232,17 +292,22 @@ func build(p) -> Dictionary:
 	var radial_segments := TopologyBudget.radial_segments(8.0, quality, 8)
 	var pipe_segments := TopologyBudget.radial_segments(3.0, quality, 6)
 
-	var stone := Stock.material("weathered_brass", Color("a97b45"), 0.50, 0.68)
-	var trim := Stock.material("warm_trim", Color("d2a96d"), 0.42, 0.54)
-	var dark := Stock.material("dark_mechanism", Color("423a37"), 0.66, 0.74)
+	var stone := Stock.material("weathered_brass", Color("9d754c"), 0.46, 0.70)
+	var trim := Stock.material("warm_trim", Color("c8a16b"), 0.40, 0.56)
+	var dark := Stock.material("dark_mechanism", Color("695446"), 0.60, 0.76)
 	var steel := Stock.material("polished_steel", Color("918c88"), 0.76, 0.34)
-	var arcane := Stock.glow_material("vapor_amethyst", Color("8d48d2"), 2.25)
-	var pipe_glow := Stock.glow_material("vapor_conduit", Color("68408d"), 1.25)
+	var arcane := Stock.glow_material("vapor_amethyst", Color("8d48d2"), 1.65)
+	var pipe_glow := Stock.glow_material("vapor_conduit", Color("68408d"), 0.90)
 
 	var asset := Assembly.new()
 	_add(asset, "platform", _part(Stock.cylinder(base_radius, base_radius,
 		base_height, radial_segments), stone), _xf(Vector3(0.0, base_height * 0.5, 0.0)),
 		"revolved", "contact", ["foundation"], {"repetition": "centered",
+			"surface_options": {"axis": "y"}})
+	_add(asset, "platform_deck", _part(Stock.cylinder(base_radius * 0.86,
+		base_radius * 0.91, base_height * 0.34, radial_segments), trim),
+		_xf(Vector3(0.0, base_height * 1.05, 0.0)), "revolved", "contact",
+		["foundation", "deck"], {"repetition": "centered",
 			"surface_options": {"axis": "y"}})
 	_add(asset, "platform_inlay", _part(Stock.torus(base_radius * 0.72,
 		base_radius * 0.79, radial_segments + 2, 4), pipe_glow),
@@ -254,27 +319,66 @@ func build(p) -> Dictionary:
 		_options("prismatic", "contact", ["foundation", "trim"], {
 			"repetition": "radial_repeat",
 			"surface_options": {"minimum_slenderness": 1.0}}))
-	for index in range(10):
-		var angle := TAU * float(index) / 10.0
+	for index in range(8):
+		var angle := TAU * float(index) / 8.0
 		var position := Vector3(cos(angle), 0.0, sin(angle)) * base_radius * 0.89
 		position.y = base_height * 0.70
 		asset.instance_component("rim_%02d" % index, rim,
 			_xf(position, Vector3(0.0, -rad_to_deg(angle), 0.0)))
 
-	_add(asset, "machine_plinth", _part(Stock.box(Vector3(size * 0.48,
-		size * 0.18, size * 0.38)), dark),
-		_xf(Vector3(size * 0.14, deck_y + size * 0.09, -size * 0.04)),
+	_add(asset, "machine_plinth", _part(Stock.box(Vector3(size * 0.44,
+		size * 0.13, size * 0.34)), dark),
+		_xf(Vector3(size * 0.14, deck_y + size * 0.065, -size * 0.04)),
 		"prismatic", "contact", ["foundation"], {
+			"surface_options": {"minimum_slenderness": 1.0}})
+	_add(asset, "machine_plinth_cap", _part(Stock.box(Vector3(size * 0.39,
+		size * 0.07, size * 0.29)), stone),
+		_xf(Vector3(size * 0.14, deck_y + size * 0.155, -size * 0.04)),
+		"prismatic", "contact", ["foundation", "machine"], {
 			"surface_options": {"minimum_slenderness": 1.0}})
 	var pump_center := Vector3(size * 0.10, deck_y + size * 0.23, -size * 0.05)
 	_add(asset, "pump_body", _part(Stock.cylinder(size * 0.105, size * 0.105,
 		size * 0.33, radial_segments), stone), _xf(pump_center, Vector3(0.0, 0.0, 90.0)),
 		"revolved", "enclosure", ["machine"], {"surface_options": {"axis": "y"}})
+	for side in [-1.0, 1.0]:
+		_add(asset, "pump_endcap_%s" % ("left" if side < 0.0 else "right"),
+			_part(Stock.cylinder(size * 0.125, size * 0.105, size * 0.045,
+				radial_segments), trim),
+			_xf(pump_center + Vector3(float(side) * size * 0.18, 0.0, 0.0),
+				Vector3(0.0, 0.0, 90.0)), "revolved", "trim", ["machine", "endcap"], {
+				"repetition": "paired", "surface_options": {"axis": "y"}})
+	_add(asset, "pump_band", _part(Stock.torus(size * 0.106, size * 0.122,
+		radial_segments, 4), trim), _xf(pump_center, Vector3(0.0, 0.0, 90.0)),
+		"revolved", "trim", ["machine"], {"surface_options": {"axis": "y"}})
+	_add(asset, "pump_badge", _part(Stock.box(Vector3(size * 0.13, size * 0.085,
+		size * 0.018)), trim), _xf(pump_center + Vector3(0.0, 0.0, size * 0.112)),
+		"prismatic", "decorative", ["machine", "badge"])
+	_add(asset, "pump_badge_ring", _part(Stock.torus(size * 0.060, size * 0.082,
+		radial_segments + 2, 4), dark),
+		_xf(pump_center + Vector3(0.0, 0.0, size * 0.128), Vector3(90.0, 0.0, 0.0)),
+		"revolved", "decorative", ["machine", "badge", "gear"], {
+			"surface_options": {"axis": "y"}})
+	_add(asset, "pump_indicator", _part(Stock.box(Vector3(size * 0.065,
+		size * 0.018, size * 0.010)), arcane),
+		_xf(pump_center + Vector3(0.0, size * 0.016, size * 0.123)),
+		"prismatic", "effect_anchor", ["machine", "arcane"])
 	_add(asset, "exhaust_stack", _part(Stock.cylinder(size * 0.045, size * 0.065,
 		size * 0.24, radial_segments), trim),
 		_xf(pump_center + Vector3(-size * 0.06, size * 0.22, 0.0)),
 		"revolved", "effect_anchor", ["machine", "exhaust"], {
 			"surface_options": {"axis": "y"}})
+	_add(asset, "exhaust_lip", _part(Stock.torus(size * 0.047, size * 0.066,
+		radial_segments, 4), trim),
+		_xf(pump_center + Vector3(-size * 0.06, size * 0.35, 0.0)),
+		"revolved", "trim", ["machine", "exhaust"], {
+			"surface_options": {"axis": "y"}})
+	for index in range(4):
+		var vapor_offset := Vector3(size * (-0.06 + 0.025 * sin(float(index))),
+			size * (0.39 + 0.075 * index), size * 0.012 * cos(float(index)))
+		_add(asset, "vapor_plume_%02d" % index,
+			_part(Stock.sphere(size * (0.045 + 0.008 * index), radial_segments, 4), arcane),
+			_xf(pump_center + vapor_offset), "organic", "effect_anchor",
+			["machine", "exhaust", "vapor"], {"repetition": "centered"})
 
 	var bent := _derrick_bent(size, deck_y, pivot_y, stone, trim, dark, radial_segments)
 	var bent_z := frame_depth * 0.43
@@ -313,7 +417,7 @@ func build(p) -> Dictionary:
 	var walking := _walking_beam(size, front_length, rear_length, frame_depth,
 		stone, trim, dark)
 	asset.instance_component("walking_beam", walking, rest.walking_beam)
-	var horsehead := _horsehead(size, frame_depth, stone, trim, arcane)
+	var horsehead := _horsehead(size, frame_depth, stone, trim, dark, arcane)
 	asset.instance_component("horsehead", horsehead, rest.horsehead)
 
 	var crank_center := Vector3(crank_center_2d.x, crank_center_2d.y, 0.0)
@@ -411,7 +515,7 @@ func build(p) -> Dictionary:
 		"topology_budget": {
 			"rendered_triangles": 5500,
 			"unique_triangles": 4000,
-			"components": {"walking_beam": 500, "horsehead": 450},
+			"components": {"walking_beam": 650, "horsehead": 650},
 		},
 		"quality_profile": "runtime",
 		"require_surface_classification": true,
@@ -452,7 +556,7 @@ func build(p) -> Dictionary:
 		"front": "+Z",
 		"metadata": {
 			"description": "Rigged vapor derrick with an independently implemented four-bar drive",
-			"reference_status": "Visual fidelity pending reattachment of the original concept image",
+			"reference_status": "Silhouette and material hierarchy matched to the supplied vapor-derrick concept",
 			"intentional_asymmetry": ["staggered reservoirs", "process pipes"],
 		},
 	}
