@@ -11,6 +11,8 @@ static func _finite_transform(value: Transform3D) -> bool:
 	return absf(value.basis.determinant()) > 0.0000001
 
 static func _transform_error(first: Transform3D, second: Transform3D) -> float:
+	if first == second:
+		return 0.0
 	var position_error := first.origin.distance_to(second.origin)
 	var rotation_error := first.basis.get_rotation_quaternion().angle_to(
 		second.basis.get_rotation_quaternion())

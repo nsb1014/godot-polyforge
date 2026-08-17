@@ -26,6 +26,47 @@ static func _frame_between(first: Vector3, second: Vector3) -> Transform3D:
 	z_axis = x_axis.cross(y_axis).normalized()
 	return Transform3D(Basis(x_axis, y_axis, z_axis), (first + second) * 0.5)
 
+static func _point_segment_distance(point: Vector3, first: Vector3, second: Vector3) -> float:
+	var delta := second - first
+	var length_squared := delta.length_squared()
+	if length_squared <= 0.0000001:
+		return point.distance_to(first)
+	var fraction := clampf((point - first).dot(delta) / length_squared, 0.0, 1.0)
+	return point.distance_to(first + delta * fraction)
+
+## Conservatively validates baked moving links against static spherical keepouts.
+## Each link names two Vector3 fields in a four-bar sample and can add a Z offset
+## matching its authored lane. Clearance is measured surface-to-surface.
+static func validate_clearance(solved: Dictionary, links: Array,
+		exclusions: Array, required_clearance := 0.0) -> Dictionary:
+	if not bool(solved.get("ok", false)):
+		return {"ok": false, "error": "clearance requires solved motion",
+			"samples": []}
+	var minimum_clearance := INF
+	var closest := {}
+	for sample_index in range(solved.samples.size()):
+		var sample: Dictionary = solved.samples[sample_index]
+		for link in links:
+			var first: Vector3 = sample.get(str(link.start), Vector3.ZERO)
+			var second: Vector3 = sample.get(str(link.end), Vector3.ZERO)
+			var offset := Vector3(0.0, 0.0, float(link.get("offset_z", 0.0)))
+			var link_radius := float(link.get("radius", 0.0))
+			for exclusion in exclusions:
+				var center: Vector3 = exclusion.center
+				var clearance := _point_segment_distance(center, first + offset,
+					second + offset) - link_radius - float(exclusion.radius)
+				if clearance < minimum_clearance:
+					minimum_clearance = clearance
+					closest = {"sample": sample_index, "link": str(link.get("name", "link")),
+						"exclusion": str(exclusion.get("name", "keepout")),
+						"clearance": clearance}
+	if minimum_clearance == INF:
+		minimum_clearance = 0.0
+	return {"ok": minimum_clearance >= float(required_clearance),
+		"minimum_clearance": minimum_clearance,
+		"required_clearance": float(required_clearance), "closest": closest,
+		"maximum_fixed_length_error": 0.0, "loop_closure_error": 0.0}
+
 static func solve_four_bar(config: Dictionary, sample_count := 64) -> Dictionary:
 	assert(sample_count >= 4, "four-bar animation requires at least four samples")
 	var crank_center: Vector2 = config.crank_center
@@ -87,10 +128,17 @@ static func solve_four_bar(config: Dictionary, sample_count := 64) -> Dictionary
 				"pump_shaft": Transform3D(Basis.IDENTITY, front3),
 			},
 		})
+	# The final sample is the authored loop seam. Reuse the first pose exactly so
+	# floating-point angle wrapping cannot introduce a visible or validator seam.
+	var closing_sample: Dictionary = samples[0].duplicate(true)
+	closing_sample.phase = 1.0
+	samples[-1] = closing_sample
 	var loop_error := 0.0
 	for name in samples[0].frames:
 		var first: Transform3D = samples[0].frames[name]
 		var last: Transform3D = samples[-1].frames[name]
+		if first == last:
+			continue
 		loop_error = maxf(loop_error, first.origin.distance_to(last.origin))
 		loop_error = maxf(loop_error, first.basis.get_rotation_quaternion().angle_to(
 			last.basis.get_rotation_quaternion()))

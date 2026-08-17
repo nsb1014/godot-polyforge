@@ -62,6 +62,13 @@ func _initialize() -> void:
 	check(linkage.ok and linkage.samples.size() == 65 and
 		linkage.maximum_fixed_length_error < 0.00001 and linkage.loop_closure_error < 0.00001,
 		"constraint-baked four-bar motion stays connected and closes its loop")
+	var clearance := MechanicalConstraints.validate_clearance(linkage, [{
+		"name": "pitman", "start": "crank_pin", "end": "beam_rear_pin",
+		"radius": 0.05,
+	}], [{"name": "remote housing", "center": Vector3(0.0, 0.0, 3.0),
+		"radius": 0.5}], 0.1)
+	check(clearance.ok and clearance.minimum_clearance > clearance.required_clearance,
+		"baked motion clearance checks moving links against static keepouts")
 
 	var poly = PolyMesh.lathe([
 		Vector2(0.0, -1.0), Vector2(0.8, -0.7), Vector2(1.0, 0.2), Vector2(0.0, 1.0)],
