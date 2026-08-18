@@ -12,6 +12,11 @@ components, four-axis part classification, adaptive topology, constraint-baked a
 isolated construction/appearance contracts, reference evidence, interaction sweeps, and
 eight-view rendering.
 
+`examples/arcane_relay_recipe.gd` is the independent static-assembly proof. It compiles a
+geometry-free `AssemblyPlan` through typed sockets and the specialized
+`RigidAssemblySolver`, then permits geometry generation only from the resulting
+`SolvedAssembly`.
+
 ## Modules
 
 | Path | Purpose |
@@ -21,8 +26,12 @@ eight-view rendering.
 | `core/compose.gd` | Seeded ring, arc, border, and anchored-cluster placement |
 | `core/density.gd` | Consumer-defined sampling profiles and triangle targets |
 | `core/palette.gd` | OKLab palette and dimension-grid snapping |
-| `core/assembly.gd` | Named subparts, reusable component instances, sockets, local frames, and merge |
-| `core/component.gd` | Nestable local-space component definitions with shared meshes and sockets |
+| `core/assembly.gd` | Named subparts, reusable component instances, typed sockets, local frames, and merge |
+| `core/component.gd` | Nestable local-space component definitions with shared meshes and typed socket contracts |
+| `core/component_catalog.gd` | Versioned runtime components with canonical capabilities, sockets, and clearance volumes |
+| `core/assembly_plan.gd` | Geometry-free component graph, connection constraints, and keepouts |
+| `core/solved_assembly.gd` | Authoritative transforms and inspectable residual/clearance evidence |
+| `core/socket_contract.gd` | Socket type, compatibility, twist, cardinality, and tolerance validation |
 | `core/surface_types.gd` | Orthogonal construction, role, repetition, and motion taxonomy |
 | `core/topology_budget.gd` | Play-size adaptive topology profiles and rendered/unique triangle accounting |
 | `core/rig.gd` | Skeleton bones, skin bindings, clips, and validated motion reports |
@@ -32,6 +41,7 @@ eight-view rendering.
 | `core/asset_intent.gd` | Separately hashed construction and appearance intent |
 | `core/solver_stage.gd` | Minimal solver invocation, evidence, failure, and provenance contract |
 | `core/four_bar_solver.gd` | Specialized deterministic four-bar solver stage |
+| `core/rigid_assembly_solver.gd` | Specialized deterministic rigid-socket propagation and loop verification |
 | `core/geometry_fingerprint.gd` | Appearance-independent geometry, socket, and semantic fingerprint |
 | `core/asset_recipe.gd` | Project-owned recipe loading and normalized compiler contract |
 | `core/parameters.gd` | Validated primary measurements, derived-dimension provenance, overrides, and sweeps |
@@ -56,6 +66,7 @@ eight-view rendering.
 | `build/build_pipeline.gd` | Validation gate and coordinated production output |
 | `build/stage_runner.gd` | Immutable domain-free dependency and provenance ledger |
 | `build/style_compiler.gd` | Material-slot binding with geometry-hash enforcement |
+| `build/assembly_compiler.gd` | Geometry compilation restricted to accepted solved assemblies |
 | `cli/polyforge_cli.gd` | Headless `build` and `inspect` commands |
 
 ## Install
@@ -160,20 +171,28 @@ separate. `AssetIntent` hashes construction and appearance independently. `Resol
 consumes only construction intent. Geometry is compiled against stable material-slot IDs, then
 `StyleCompiler` binds appearance while proving that the geometry fingerprint did not change.
 Moving assets pin a specialized solver in `MotionContract`; the resulting rig records the exact
-geometry and motion-contract hashes it consumed.
+geometry and motion-contract hashes it consumed. Static modular assets may instead emit an
+`AssemblyPlan`, solve it with a domain-specific `SolverStage`, and pass only the immutable
+`SolvedAssembly` to `AssemblyCompiler`. Unsupported domains and constraints fail closed.
 
 `StageRunner` records immutable input/output hashes without containing domain logic. The manifest
 publishes these contracts, the stage ledger, reference-image semantic measurements, and normalized
 visual evidence. Cross-renderer jobs compare evidence vectors rather than pixels; beauty renders
 remain scoped to a pinned renderer environment. The complete migrated example is
-`examples/arcane_pumpjack_recipe.gd`.
+`examples/arcane_pumpjack_recipe.gd`; the isolated static-assembly example is
+`examples/arcane_relay_recipe.gd`.
+
+The initial rigid solver is intentionally narrow: it propagates exact socket transforms, verifies
+closure loops, and checks component clearance spheres against explicit keepouts. It does not search
+arbitrary geometry, solve deformable bodies, or stand in for mechanism kinematics. New domains
+implement the shared `SolverStage` contract and own their own representations and diagnostics.
 
 ### Reusable components and scoped symmetry
 
 Use `Component` for geometry that should remain identical wherever it is placed. Components can
 contain named parts, sockets, and nested component instances. `Assembly.instance_component()`
 flattens the hierarchy for ordinary Godot/GLB export while retaining component IDs, source-part
-names, instance paths, shared mesh identity, and sockets in manifest version 7.
+names, instance paths, shared mesh identity, and typed socket contracts in manifest version 8.
 
 ```gdscript
 const Component := preload("res://addons/polyforge/core/component.gd")

@@ -33,6 +33,12 @@ const FourBarSolver := preload("res://addons/polyforge/core/four_bar_solver.gd")
 const GeometryFingerprint := preload("res://addons/polyforge/core/geometry_fingerprint.gd")
 const StageRunner := preload("res://addons/polyforge/build/stage_runner.gd")
 const StyleCompiler := preload("res://addons/polyforge/build/style_compiler.gd")
+const SocketContract := preload("res://addons/polyforge/core/socket_contract.gd")
+const ComponentCatalog := preload("res://addons/polyforge/core/component_catalog.gd")
+const AssemblyPlan := preload("res://addons/polyforge/core/assembly_plan.gd")
+const SolvedAssembly := preload("res://addons/polyforge/core/solved_assembly.gd")
+const RigidAssemblySolver := preload("res://addons/polyforge/core/rigid_assembly_solver.gd")
+const AssemblyCompiler := preload("res://addons/polyforge/build/assembly_compiler.gd")
 
 var failures := 0
 
@@ -46,6 +52,49 @@ func _material(name: String) -> StandardMaterial3D:
 	material.resource_name = name
 	material.vertex_color_use_as_albedo = true
 	return material
+
+func _rigid_socket(type: String, accepts: Array, twists := [0.0],
+		cardinality := 1) -> Dictionary:
+	return {"type": type, "accepts": PackedStringArray(accepts),
+		"allowed_twist_degrees": PackedFloat32Array(twists),
+		"cardinality": cardinality, "position_tolerance": 0.0001,
+		"rotation_tolerance_degrees": 0.01, "clearance_radius": 0.1}
+
+func _rigid_test_catalog(bridge_right := 1.0, bridge_type := "mate",
+		with_clearance := false):
+	var root := Component.new("test_root")
+	root.define_typed_socket("left", Transform3D(Basis.IDENTITY, Vector3(-1.0, 0.0, 0.0)),
+		_rigid_socket("mount", ["mate"]))
+	root.define_typed_socket("right", Transform3D(Basis.IDENTITY, Vector3(1.0, 0.0, 0.0)),
+		_rigid_socket("mount", ["mate"]))
+	var bridge := Component.new("test_bridge")
+	bridge.define_typed_socket("left", Transform3D(Basis.IDENTITY, Vector3(-1.0, 0.0, 0.0)),
+		_rigid_socket(bridge_type, ["mount"]))
+	bridge.define_typed_socket("right", Transform3D(Basis.IDENTITY,
+		Vector3(bridge_right, 0.0, 0.0)), _rigid_socket(bridge_type, ["mount"]))
+	var catalog := ComponentCatalog.new()
+	catalog.register("test.root", "1.0.0", root)
+	var clearances := []
+	if with_clearance:
+		clearances = [{"id": "bridge_body", "center": Vector3.ZERO, "radius": 0.5}]
+	catalog.register("test.bridge", "1.0.0", bridge, clearances)
+	return catalog
+
+func _rigid_test_plan(catalog, connections: Array, instances := [], keepouts := []):
+	if instances.is_empty():
+		instances = [
+			{"id": "root", "component_id": "test.root",
+				"fixed_transform": Transform3D.IDENTITY},
+			{"id": "bridge", "component_id": "test.bridge"},
+		]
+	return AssemblyPlan.new("test_design_hash", catalog.content_hash(), "root",
+		instances, connections, keepouts)
+
+func _has_diagnostic(result: Dictionary, code: String) -> bool:
+	for diagnostic in result.get("diagnostics", []):
+		if str(diagnostic.get("code", "")) == code:
+			return true
+	return false
 
 func _initialize() -> void:
 	var intent_a := AssetIntent.new({"size": 2.0, "kind": "prop"},
@@ -84,6 +133,98 @@ func _initialize() -> void:
 	check(solved_a.status == "solved" and CanonicalArtifact.hash_value(solved_a.solution) ==
 		CanonicalArtifact.hash_value(solved_b.solution),
 		"four-bar solver stage produces deterministic independently hashable evidence")
+	var rigid_connections := [
+		{"id": "left_closure", "a": {"instance": "root", "socket": "left"},
+			"b": {"instance": "bridge", "socket": "left"}, "twist_degrees": 0.0},
+		{"id": "right_closure", "a": {"instance": "root", "socket": "right"},
+			"b": {"instance": "bridge", "socket": "right"}, "twist_degrees": 0.0},
+	]
+	check(SocketContract.validate(_rigid_socket("mount", ["mate"])).is_empty() and
+		not SocketContract.validate(_rigid_socket("mount", ["mate"], [], 0)).is_empty(),
+		"typed socket schema rejects empty orientation sets and invalid cardinality")
+	var rigid_catalog = _rigid_test_catalog()
+	var rigid_plan = _rigid_test_plan(rigid_catalog, rigid_connections)
+	var rigid_solver := RigidAssemblySolver.new(rigid_catalog)
+	var rigid_solved_a := rigid_solver.solve({"problem_type": "rigid.socket_assembly",
+		"plan": rigid_plan.payload, "constraints": [{"kind": "rigid.socket_mate"}]})
+	var rigid_solved_b := rigid_solver.solve({"problem_type": "rigid.socket_assembly",
+		"plan": rigid_plan.payload, "constraints": [{"kind": "rigid.socket_mate"}]})
+	check(rigid_solved_a.status == "solved" and
+		CanonicalArtifact.hash_value(rigid_solved_a.solution) ==
+		CanonicalArtifact.hash_value(rigid_solved_b.solution) and
+		rigid_solved_a.solution.residuals[1].ok,
+		"rigid socket solver deterministically closes a multiply constrained assembly")
+	var rigid_artifact := SolvedAssembly.new(rigid_plan.content_hash(),
+		rigid_catalog.content_hash(), rigid_solved_a.solution.instances,
+		rigid_solved_a.solution.transforms, rigid_solved_a.solution.connections,
+		rigid_solved_a.solution.residuals, rigid_solved_a.solution.clearance,
+		rigid_solver.descriptor())
+	check(rigid_artifact.validate().is_empty() and
+		AssemblyCompiler.compile(rigid_catalog, rigid_artifact).ok,
+		"geometry compiler accepts a validated solved assembly artifact")
+	check(not AssemblyCompiler.compile(rigid_catalog, rigid_plan).ok and
+		AssemblyCompiler.compile(rigid_catalog, rigid_plan).failures[0] ==
+		"GEOMETRY_REQUIRES_SOLVED_ASSEMBLY",
+		"geometry ownership boundary rejects an unsolved assembly plan")
+	var rigid_unsupported := rigid_solver.solve({"problem_type": "deform.character"})
+	check(rigid_unsupported.status == "unsupported" and
+		_has_diagnostic(rigid_unsupported, "SOLVER_UNSUPPORTED_PROBLEM"),
+		"rigid solver fails closed instead of impersonating another domain solver")
+	var bad_loop_catalog = _rigid_test_catalog(1.25)
+	var bad_loop := RigidAssemblySolver.new(bad_loop_catalog).solve({
+		"problem_type": "rigid.socket_assembly",
+		"plan": _rigid_test_plan(bad_loop_catalog, rigid_connections).payload,
+		"constraints": [{"kind": "rigid.socket_mate"}]})
+	check(bad_loop.status == "unsatisfiable" and
+		_has_diagnostic(bad_loop, "RIGID_LOOP_INCONSISTENT"),
+		"rigid solver reports an over-constrained loop with a precise diagnostic")
+	var mismatch_catalog = _rigid_test_catalog(1.0, "wrong_mate")
+	var mismatch := RigidAssemblySolver.new(mismatch_catalog).solve({
+		"problem_type": "rigid.socket_assembly",
+		"plan": _rigid_test_plan(mismatch_catalog, [rigid_connections[0]]).payload,
+		"constraints": [{"kind": "rigid.socket_mate"}]})
+	check(mismatch.status == "unsatisfiable" and
+		_has_diagnostic(mismatch, "RIGID_SOCKET_TYPE_MISMATCH"),
+		"typed sockets reject semantically incompatible component interfaces")
+	var bad_twist_connections := rigid_connections.duplicate(true)
+	bad_twist_connections[0].twist_degrees = 90.0
+	var bad_twist := rigid_solver.solve({"problem_type": "rigid.socket_assembly",
+		"plan": _rigid_test_plan(rigid_catalog, bad_twist_connections).payload,
+		"constraints": [{"kind": "rigid.socket_mate"}]})
+	check(bad_twist.status == "unsatisfiable" and
+		_has_diagnostic(bad_twist, "RIGID_ORIENTATION_UNSUPPORTED"),
+		"typed sockets reject an orientation outside the declared twist set")
+	var overbooked_connections := [rigid_connections[0], {
+		"id": "duplicate_mount", "a": {"instance": "root", "socket": "left"},
+		"b": {"instance": "bridge_2", "socket": "left"}, "twist_degrees": 0.0}]
+	var overbooked := rigid_solver.solve({"problem_type": "rigid.socket_assembly",
+		"plan": _rigid_test_plan(rigid_catalog, overbooked_connections, [
+			{"id": "root", "component_id": "test.root",
+				"fixed_transform": Transform3D.IDENTITY},
+			{"id": "bridge", "component_id": "test.bridge"},
+			{"id": "bridge_2", "component_id": "test.bridge"}]).payload,
+		"constraints": [{"kind": "rigid.socket_mate"}]})
+	check(overbooked.status == "unsatisfiable" and
+		_has_diagnostic(overbooked, "RIGID_SOCKET_CARDINALITY_EXCEEDED"),
+		"typed sockets reject connection counts above their declared cardinality")
+	var disconnected := rigid_solver.solve({"problem_type": "rigid.socket_assembly",
+		"plan": _rigid_test_plan(rigid_catalog, [], [
+			{"id": "root", "component_id": "test.root",
+				"fixed_transform": Transform3D.IDENTITY},
+			{"id": "bridge", "component_id": "test.bridge"}]).payload,
+		"constraints": [{"kind": "rigid.socket_mate"}]})
+	check(disconnected.status == "unsatisfiable" and
+		_has_diagnostic(disconnected, "RIGID_DISCONNECTED_GRAPH"),
+		"rigid solver rejects instances unreachable from a fixed root")
+	var clearance_catalog = _rigid_test_catalog(1.0, "mate", true)
+	var blocked := RigidAssemblySolver.new(clearance_catalog).solve({
+		"problem_type": "rigid.socket_assembly",
+		"plan": _rigid_test_plan(clearance_catalog, [rigid_connections[0]], [], [
+			{"id": "reserved_space", "center": Vector3.ZERO, "radius": 0.25}]).payload,
+		"constraints": [{"kind": "rigid.socket_mate"}, {"kind": "rigid.clearance"}]})
+	check(blocked.status == "unsatisfiable" and
+		_has_diagnostic(blocked, "RIGID_CLEARANCE_BLOCKED"),
+		"rigid solver rejects a solved placement that violates an explicit keepout")
 	var stage_runner := StageRunner.new("contract_test")
 	stage_runner.record("intent", "test.intent.v1", {}, intent_a)
 	stage_runner.record("resolve", "test.resolve.v1",
@@ -349,6 +490,21 @@ func _initialize() -> void:
 		vapor_derrick.rig.provenance.geometry_hash ==
 		vapor_derrick.style_compilation.geometry_hash_after,
 		"style and rig stages enforce geometry ownership through matching hashes")
+	var arcane_relay := AssetRecipe.load_file("res://examples/arcane_relay_recipe.gd")
+	var relay_validation := BuildPipeline.validate(arcane_relay)
+	check(relay_validation.ok and relay_validation.process.stages == 6 and
+		arcane_relay.contracts.has("assembly_plan") and
+		arcane_relay.contracts.has("solved_assembly"),
+		"static relay completes the plan, specialized solve, geometry, and style stages")
+	check(arcane_relay.contracts.solved_assembly.payload.plan_hash ==
+		CanonicalArtifact.hash_value(arcane_relay.contracts.assembly_plan) and
+		arcane_relay.style_compilation.geometry_hash_before ==
+		arcane_relay.style_compilation.geometry_hash_after,
+		"relay provenance binds geometry to the accepted plan while style stays non-geometric")
+	var relay_residuals: Array = arcane_relay.contracts.solved_assembly.payload.residuals
+	check(relay_residuals.size() == 5 and relay_residuals.all(
+		func(residual): return bool(residual.get("ok", false))),
+		"reference relay records passing residual evidence for every socket connection")
 
 	var recipe := AssetRecipe.normalize({
 		"name": "named_test",
@@ -361,10 +517,11 @@ func _initialize() -> void:
 	var manifest := ManifestExport.data(recipe, validation, {"glb": "named_test.glb"})
 	check(manifest.parts.size() == 3 and manifest.anchors.socket == [1.0, 2.0, 3.0],
 		"manifest preserves named parts and numeric anchors")
-	check(manifest.format_version == 7 and manifest.has("parameters") and
+	check(manifest.format_version == 8 and manifest.has("parameters") and
 		manifest.has("attachments") and manifest.has("component_instances") and
-		manifest.has("topology") and manifest.has("rig"),
-		"manifest v7 records components, topology, rig data, and authored metadata")
+		manifest.has("socket_contracts") and manifest.has("topology") and
+		manifest.has("rig"),
+		"manifest v8 records typed sockets, components, topology, rig data, and metadata")
 
 	var glb_path := "user://polyforge_roundtrip.glb"
 	var export_error := GLTFExport.write_preserved("named_test", asset, glb_path)

@@ -34,6 +34,14 @@ static func evaluate(spec: Dictionary) -> Dictionary:
 		for required in ["solve_mechanism", "compile_rig"]:
 			if not stage_ids.has(required):
 				failures.append("PROCESS_MISSING_MOTION_STAGE: %s" % required)
+	var has_rigid_plan := contracts.has("assembly_plan") or contracts.has("solved_assembly")
+	if has_rigid_plan:
+		for contract_name in ["assembly_plan", "solved_assembly"]:
+			if not contracts.has(contract_name):
+				failures.append("PROCESS_MISSING_RIGID_CONTRACT: %s" % contract_name)
+		for required in ["plan_assembly", "solve_rigid"]:
+			if not stage_ids.has(required):
+				failures.append("PROCESS_MISSING_RIGID_STAGE: %s" % required)
 	var unhashed := process.duplicate(true)
 	var recorded_hash := str(unhashed.get("pipeline_hash", ""))
 	unhashed.erase("pipeline_hash")
@@ -57,6 +65,21 @@ static func evaluate(spec: Dictionary) -> Dictionary:
 		var motion_hash := CanonicalArtifact.hash_value(contracts.motion_contract)
 		if str(rig_provenance.get("motion_contract_hash", "")) != motion_hash:
 			failures.append("PROCESS_RIG_MOTION_HASH_MISMATCH")
+	if has_rigid_plan and contracts.has("assembly_plan") and contracts.has("solved_assembly"):
+		var plan_hash := CanonicalArtifact.hash_value(contracts.assembly_plan)
+		var solved_hash := CanonicalArtifact.hash_value(contracts.solved_assembly)
+		if str(contracts.solved_assembly.get("payload", {}).get("plan_hash", "")) != plan_hash:
+			failures.append("PROCESS_SOLVED_PLAN_HASH_MISMATCH")
+		var stages_by_id := {}
+		for stage in process.get("stages", []):
+			stages_by_id[str(stage.get("stage_id", ""))] = stage
+		if str(stages_by_id.get("plan_assembly", {}).get("output_hash", "")) != plan_hash:
+			failures.append("PROCESS_PLAN_STAGE_HASH_MISMATCH")
+		if str(stages_by_id.get("solve_rigid", {}).get("output_hash", "")) != solved_hash:
+			failures.append("PROCESS_RIGID_STAGE_HASH_MISMATCH")
+		if str(stages_by_id.get("compile_geometry", {}).get("input_hashes", {}).get(
+				"solved_assembly", "")) != solved_hash:
+			failures.append("PROCESS_GEOMETRY_BYPASSED_SOLVED_ASSEMBLY")
 	return {"ok": failures.is_empty(), "failures": failures,
 		"stages": stage_ids.size(), "stage_ids": stage_ids,
 		"pipeline_hash": recorded_hash}

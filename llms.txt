@@ -82,6 +82,11 @@ Godot before the build succeeds.
   `AppearanceStyleBinding` afterward. Treat any geometry-hash change as a build failure.
 - Route a mechanism through a specialized `SolverStage`; never silently discard an unsupported
   constraint or substitute a generic mathematical solver.
+- For modular rigid assets, author typed component sockets, emit a geometry-free `AssemblyPlan`,
+  and compile geometry only from a validated `SolvedAssembly`. Treat socket type, twist,
+  cardinality, loop closure, connectivity, and keepout failures as owned solver diagnostics.
+- Keep solver domains narrow. Rigid assemblies, mechanisms, and deformable characters share the
+  `SolverStage` invocation contract, not one generic internal solver.
 - Pin rigid motion in `MotionContract` and bind the compiled rig to the exact geometry and contract
   hashes it consumed.
 - Record stage input/output hashes with `StageRunner`. The runner owns ordering and provenance,
@@ -105,7 +110,10 @@ Godot before the build succeeds.
 - `core/rig.gd` and `core/animation.gd`: skeleton, skin binding, and clip authoring data.
 - `core/mechanical_constraints.gd`: four-bar sampling and motion-clearance validation.
 - `core/canonical_artifact.gd` and `core/asset_intent.gd`: typed canonical IR and split hashes.
-- `core/solver_stage.gd` and `core/four_bar_solver.gd`: shared invocation contract, specialized math.
+- `core/solver_stage.gd`, `core/four_bar_solver.gd`, and `core/rigid_assembly_solver.gd`: shared
+  invocation contract with domain-specific math and diagnostics.
+- `core/assembly_plan.gd`, `core/solved_assembly.gd`, and `build/assembly_compiler.gd`: isolated
+  planning, solving, and geometry ownership for modular rigid assets.
 - `build/stage_runner.gd` and `build/style_compiler.gd`: isolated stages and enforced style boundary.
 - `quality/reference_validation.gd` and `quality/visual_evidence.gd`: reference and renderer evidence.
 - `core/attachments.gd`: sampled surface frames, child bindings, and attachment drift checks.
