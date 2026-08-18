@@ -9,7 +9,8 @@ palette, catalog, asset naming scheme, or output path dependency.
 
 `examples/arcane_pumpjack_recipe.gd` is the vapor-derrick reliability reference for reusable
 components, four-axis part classification, adaptive topology, constraint-baked animation,
-interaction sweeps, and eight-view rendering.
+isolated construction/appearance contracts, reference evidence, interaction sweeps, and
+eight-view rendering.
 
 ## Modules
 
@@ -27,6 +28,11 @@ interaction sweeps, and eight-view rendering.
 | `core/rig.gd` | Skeleton bones, skin bindings, clips, and validated motion reports |
 | `core/animation.gd` | Deterministic named bone-transform animation clips |
 | `core/mechanical_constraints.gd` | Four-bar solving, loop baking, and swept-link clearance checks |
+| `core/canonical_artifact.gd` | Typed artifact base with canonical dictionaries and stable SHA-256 fingerprints |
+| `core/asset_intent.gd` | Separately hashed construction and appearance intent |
+| `core/solver_stage.gd` | Minimal solver invocation, evidence, failure, and provenance contract |
+| `core/four_bar_solver.gd` | Specialized deterministic four-bar solver stage |
+| `core/geometry_fingerprint.gd` | Appearance-independent geometry, socket, and semantic fingerprint |
 | `core/asset_recipe.gd` | Project-owned recipe loading and normalized compiler contract |
 | `core/parameters.gd` | Validated primary measurements, derived-dimension provenance, overrides, and sweeps |
 | `core/attachments.gd` | Geometry-sampled surface frames, child bindings, provenance, and drift checks |
@@ -39,12 +45,17 @@ interaction sweeps, and eight-view rendering.
 | `quality/surface_validation.gd` | Surface-type-specific proportion and interface validation |
 | `quality/symmetry.gd` | Scoped component-reuse and reflection contracts |
 | `quality/rig_validation.gd` | Skeleton, skin, clip-loop, and mechanical report validation |
+| `quality/process_validation.gd` | Stage-ledger and cross-stage ownership validation |
+| `quality/reference_validation.gd` | Renderer-independent semantic evidence against a pinned reference profile |
+| `quality/visual_evidence.gd` | Normalized cross-renderer evidence vectors and renderer-scoped baseline policy |
 | `terrain/zone.gd` | Landforms, spline cuts, surface rules, and constrained deterministic scatter |
 | `exporters/viewer_export.gd` | JSON and self-contained HTML export for the bundled WebGL viewer |
 | `exporters/gltf_export.gd` | Preserved/merged GLB export and Godot round-trip inspection |
 | `exporters/manifest_export.gd` | Bounds, anchors, materials, parts, validation, and output metadata |
 | `exporters/preview_export.gd` | Godot-rendered multi-view contact sheets and play-size captures |
 | `build/build_pipeline.gd` | Validation gate and coordinated production output |
+| `build/stage_runner.gd` | Immutable domain-free dependency and provenance ledger |
+| `build/style_compiler.gd` | Material-slot binding with geometry-hash enforcement |
 | `cli/polyforge_cli.gd` | Headless `build` and `inspect` commands |
 
 ## Install
@@ -142,12 +153,27 @@ func build(p) -> Dictionary:
 See `examples/bronze_guardian_recipe.gd` for a multi-part model and `llms.txt` for the compact
 agent authoring contract.
 
+### Staged asset contracts
+
+New production recipes should keep construction, appearance, motion, and validation ownership
+separate. `AssetIntent` hashes construction and appearance independently. `ResolvedDesign`
+consumes only construction intent. Geometry is compiled against stable material-slot IDs, then
+`StyleCompiler` binds appearance while proving that the geometry fingerprint did not change.
+Moving assets pin a specialized solver in `MotionContract`; the resulting rig records the exact
+geometry and motion-contract hashes it consumed.
+
+`StageRunner` records immutable input/output hashes without containing domain logic. The manifest
+publishes these contracts, the stage ledger, reference-image semantic measurements, and normalized
+visual evidence. Cross-renderer jobs compare evidence vectors rather than pixels; beauty renders
+remain scoped to a pinned renderer environment. The complete migrated example is
+`examples/arcane_pumpjack_recipe.gd`.
+
 ### Reusable components and scoped symmetry
 
 Use `Component` for geometry that should remain identical wherever it is placed. Components can
 contain named parts, sockets, and nested component instances. `Assembly.instance_component()`
 flattens the hierarchy for ordinary Godot/GLB export while retaining component IDs, source-part
-names, instance paths, shared mesh identity, and sockets in manifest version 6.
+names, instance paths, shared mesh identity, and sockets in manifest version 7.
 
 ```gdscript
 const Component := preload("res://addons/polyforge/core/component.gd")

@@ -89,7 +89,7 @@ jobs:
 
           root = Path("dist/base")
           manifest = json.loads((root / "arcane_pumpjack.manifest.json").read_text())
-          assert manifest["format_version"] == 6
+          assert manifest["format_version"] == 7
           topology = manifest["topology"]["statistics"]
           assert topology["rendered_triangles"] <= 5500
           assert topology["unique_triangles"] <= 4000
@@ -97,6 +97,18 @@ jobs:
           assert any(clip["name"] == "pump_cycle" and clip["loop"] for clip in rig["clips"])
           assert len(rig["bones"]) >= 8
           assert all(report["report"]["ok"] for report in rig["motion_reports"])
+          assert [stage["stage_id"] for stage in manifest["process"]["stages"]] == [
+              "intent", "resolve_design", "solve_mechanism", "compile_geometry",
+              "compile_appearance", "compile_rig"]
+          assert manifest["style_compilation"]["geometry_hash_before"] == \
+              manifest["style_compilation"]["geometry_hash_after"]
+          assert rig["provenance"]["geometry_hash"] == \
+              manifest["style_compilation"]["geometry_hash_after"]
+          assert manifest["reference_evidence"]["ok"]
+          assert manifest["reference_evidence"]["reference_image"]["sha256"] == \
+              "e90f854563b3f8c19d7f30c6b67d1923ecb5727754a76b5fe68e2341ce8d5490"
+          assert not manifest["visual_evidence"]["renderer_policy"][
+              "cross_renderer_pixel_comparison"]
           for name in ("arcane_pumpjack.glb", "arcane_pumpjack_viewer.json",
                        "arcane_pumpjack_viewer.html", "arcane_pumpjack_turntable.png"):
               assert (root / name).stat().st_size > 0

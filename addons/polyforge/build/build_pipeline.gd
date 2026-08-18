@@ -9,6 +9,9 @@ const SurfaceValidation := preload("res://addons/polyforge/quality/surface_valid
 const Symmetry := preload("res://addons/polyforge/quality/symmetry.gd")
 const TopologyBudget := preload("res://addons/polyforge/core/topology_budget.gd")
 const RigValidation := preload("res://addons/polyforge/quality/rig_validation.gd")
+const ProcessValidation := preload("res://addons/polyforge/quality/process_validation.gd")
+const ReferenceValidation := preload("res://addons/polyforge/quality/reference_validation.gd")
+const VisualEvidence := preload("res://addons/polyforge/quality/visual_evidence.gd")
 const GLTFExport := preload("res://addons/polyforge/exporters/gltf_export.gd")
 const ManifestExport := preload("res://addons/polyforge/exporters/manifest_export.gd")
 const PreviewExport := preload("res://addons/polyforge/exporters/preview_export.gd")
@@ -113,6 +116,16 @@ static func validate(spec: Dictionary) -> Dictionary:
 		warnings.append("rig: " + warning)
 	for measurement in rig_validation.measurements:
 		measurements.append({"type": "rig", "result": measurement})
+	var process_validation := {"ok": true, "failures": PackedStringArray(), "stages": 0}
+	if not spec.process.is_empty() or not spec.contracts.is_empty():
+		process_validation = ProcessValidation.evaluate(spec)
+		for failure in process_validation.failures:
+			failures.append("process: " + str(failure))
+	var reference_validation := ReferenceValidation.evaluate(spec)
+	for failure in reference_validation.failures:
+		failures.append("reference: " + str(failure))
+	for measurement in reference_validation.measurements:
+		measurements.append({"type": "reference", "result": measurement})
 	var bounds := _bounds(spec.assembly.parts)
 	var anchor_slack := maxf(bounds.size.x, maxf(bounds.size.y, bounds.size.z)) * 0.25
 	for anchor_name in spec.anchors:
@@ -132,6 +145,8 @@ static func validate(spec: Dictionary) -> Dictionary:
 		"symmetry": symmetry_validation,
 		"topology": topology,
 		"rig": rig_validation,
+		"process": process_validation,
+		"reference": reference_validation,
 		"triangles": triangles,
 	}
 
@@ -284,6 +299,8 @@ static func run(tree: SceneTree, spec: Dictionary, supplied_options := {}) -> Di
 	else:
 		validation.readability = {"available": false, "enabled": false,
 			"policy": readability_policy}
+	validation.visual_evidence = VisualEvidence.compile(
+		validation.get("reference", {}), validation.readability)
 	validation.ok = validation.failures.is_empty()
 	result.ok = validation.ok
 	if not validation.ok and not bool(options.force):

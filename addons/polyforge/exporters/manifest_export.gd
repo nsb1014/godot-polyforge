@@ -77,7 +77,7 @@ static func data(spec: Dictionary, validation: Dictionary, outputs: Dictionary) 
 		})
 	var manifest := {
 		"format": "godot-polyforge-manifest",
-		"format_version": 6,
+		"format_version": 7,
 		"generator": "Godot PolyForge",
 		"name": spec.name,
 		"category": spec.category,
@@ -87,6 +87,12 @@ static func data(spec: Dictionary, validation: Dictionary, outputs: Dictionary) 
 		"triangle_budget": spec.triangle_budget,
 		"topology": validation.get("topology", {}),
 		"rig": spec.rig.snapshot() if spec.rig != null else {},
+		"contracts": spec.contracts,
+		"process": spec.process,
+		"style_compilation": spec.style_compilation,
+		"reference_profile": spec.reference_profile,
+		"reference_evidence": validation.get("reference", {}),
+		"visual_evidence": validation.get("visual_evidence", {}),
 		"materials": all_materials,
 		"parts": part_records,
 		"component_instances": spec.assembly.get("component_instances"),

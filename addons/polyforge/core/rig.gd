@@ -5,6 +5,7 @@ var bones: Array[Dictionary] = []
 var bindings: Dictionary = {}
 var clips: Array = []
 var motion_reports: Array[Dictionary] = []
+var provenance: Dictionary = {}
 
 func bone_index(name: String) -> int:
 	for index in range(bones.size()):
@@ -45,9 +46,19 @@ func add_motion_report(name: String, report: Dictionary, tolerances := {}) -> vo
 	motion_reports.append({"name": name, "report": report,
 		"tolerances": tolerances.duplicate(true)})
 
+func bind_contract(geometry_hash: String, motion_contract_hash: String,
+		producer := "polyforge.rig_compiler.v1") -> void:
+	assert(geometry_hash != "", "rig provenance requires a geometry hash")
+	assert(motion_contract_hash != "", "rig provenance requires a motion contract hash")
+	provenance = {
+		"geometry_hash": geometry_hash,
+		"motion_contract_hash": motion_contract_hash,
+		"producer": str(producer),
+	}
+
 func snapshot() -> Dictionary:
 	var clip_records := []
 	for clip in clips:
 		clip_records.append(clip.snapshot())
 	return {"bones": bones, "bindings": bindings, "clips": clip_records,
-		"motion_reports": motion_reports}
+		"motion_reports": motion_reports, "provenance": provenance}

@@ -13,6 +13,16 @@ const Rig := preload("res://addons/polyforge/core/rig.gd")
 const AnimationClip := preload("res://addons/polyforge/core/animation.gd")
 const MechanicalConstraints := preload("res://addons/polyforge/core/mechanical_constraints.gd")
 const Checks := preload("res://addons/polyforge/quality/checks.gd")
+const CanonicalArtifact := preload("res://addons/polyforge/core/canonical_artifact.gd")
+const AssetIntent := preload("res://addons/polyforge/core/asset_intent.gd")
+const ResolvedDesign := preload("res://addons/polyforge/core/resolved_design.gd")
+const AppearanceStyleBinding := preload("res://addons/polyforge/core/appearance_style_binding.gd")
+const MotionContract := preload("res://addons/polyforge/core/motion_contract.gd")
+const ReferenceProfile := preload("res://addons/polyforge/core/reference_profile.gd")
+const FourBarSolver := preload("res://addons/polyforge/core/four_bar_solver.gd")
+const GeometryFingerprint := preload("res://addons/polyforge/core/geometry_fingerprint.gd")
+const StageRunner := preload("res://addons/polyforge/build/stage_runner.gd")
+const StyleCompiler := preload("res://addons/polyforge/build/style_compiler.gd")
 
 func _xf(position: Vector3, rotation_degrees := Vector3.ZERO) -> Transform3D:
 	var radians := Vector3(deg_to_rad(rotation_degrees.x),
@@ -283,6 +293,26 @@ func parameters() -> Dictionary:
 			"Reservoir radius and pipe-clearance multiplier."),
 	}
 
+func _appearance_slots() -> Dictionary:
+	return {
+		"body.primary": {"display_name": "weathered_brass", "affects_geometry": false,
+			"color": Color("9d754c"), "metallic": 0.46, "roughness": 0.70},
+		"trim.warm": {"display_name": "warm_trim", "affects_geometry": false,
+			"color": Color("c8a16b"), "metallic": 0.40, "roughness": 0.56},
+		"mechanism.dark": {"display_name": "dark_mechanism", "affects_geometry": false,
+			"color": Color("695446"), "metallic": 0.60, "roughness": 0.76},
+		"metal.steel": {"display_name": "polished_steel", "affects_geometry": false,
+			"color": Color("918c88"), "metallic": 0.76, "roughness": 0.34},
+		"effect.arcane": {"display_name": "vapor_amethyst", "affects_geometry": false,
+			"color": Color("8d48d2"), "metallic": 0.0, "roughness": 0.40,
+			"emission_enabled": true, "emission": Color("8d48d2"),
+			"emission_energy": 1.65},
+		"conduit.vapor": {"display_name": "vapor_conduit", "affects_geometry": false,
+			"color": Color("68408d"), "metallic": 0.0, "roughness": 0.40,
+			"emission_enabled": true, "emission": Color("68408d"),
+			"emission_energy": 0.90},
+	}
+
 func build(p) -> Dictionary:
 	var size: float = p.value("size")
 	var boom_reach: float = p.value("boom_reach")
@@ -298,12 +328,61 @@ func build(p) -> Dictionary:
 	var radial_segments := TopologyBudget.radial_segments(8.0, quality, 8)
 	var pipe_segments := TopologyBudget.radial_segments(3.0, quality, 6)
 
-	var stone := Stock.material("weathered_brass", Color("9d754c"), 0.46, 0.70)
-	var trim := Stock.material("warm_trim", Color("c8a16b"), 0.40, 0.56)
-	var dark := Stock.material("dark_mechanism", Color("695446"), 0.60, 0.76)
-	var steel := Stock.material("polished_steel", Color("918c88"), 0.76, 0.34)
-	var arcane := Stock.glow_material("vapor_amethyst", Color("8d48d2"), 1.65)
-	var pipe_glow := Stock.glow_material("vapor_conduit", Color("68408d"), 0.90)
+	var appearance_slots := _appearance_slots()
+	var asset_intent := AssetIntent.new({
+		"asset_kind": "rigid_mechanism",
+		"semantic_parts": ["octagonal foundation", "derrick", "walking beam",
+			"horsehead", "pump housing", "paired reservoirs", "process pipes", "vapor"],
+		"functional_requirements": ["four-bar loop closure", "moving-link clearance",
+			"stable support", "eight-view readability"],
+		"geometry_style_requirements": {
+			"shape_language": "rounded toy-industrial",
+			"platform_sides": 8,
+			"profiled_walking_beam": true,
+			"profiled_horsehead": true,
+			"detail_density": "runtime",
+		},
+		"parameters": {"size": size, "boom_reach": boom_reach,
+			"tank_scale": tank_scale},
+		"budgets": {"rendered_triangles": 5500, "unique_triangles": 4000},
+	}, {
+		"palette_family": "warm brass and amethyst",
+		"slots": appearance_slots,
+	}, [{
+		"id": "vapor_derrick_concept_v1",
+		"sha256": "e90f854563b3f8c19d7f30c6b67d1923ecb5727754a76b5fe68e2341ce8d5490",
+		"width": 1536, "height": 1536,
+		"status": "user_supplied_reference",
+	}])
+	var resolved_design := ResolvedDesign.new(asset_intent.construction_hash(), {
+		"units": "meters",
+		"front": "+Z",
+		"quality_profile": "runtime",
+		"size": size,
+		"boom_reach": boom_reach,
+		"tank_scale": tank_scale,
+		"radial_segments": radial_segments,
+		"pipe_segments": pipe_segments,
+		"solver": {"id": "polyforge.mechanism.four_bar", "version": "1.0.0"},
+		"geometry_style_requirements": asset_intent.payload.construction.geometry_style_requirements,
+	})
+	var appearance_binding := AppearanceStyleBinding.new(
+		asset_intent.appearance_hash(), appearance_slots)
+	assert(asset_intent.validate().is_empty() and resolved_design.validate().is_empty() and
+		appearance_binding.validate().is_empty(), "vapor derrick contracts must validate")
+	var stages := StageRunner.new("arcane_pumpjack.reference_v1")
+	stages.record("intent", "arcane_pumpjack.intent.v1", {}, asset_intent)
+	stages.record("resolve_design", "arcane_pumpjack.resolver.v1",
+		{"construction_intent": asset_intent.construction_hash()}, resolved_design)
+
+	# Geometry is compiled against stable material-slot IDs. Appearance is bound only
+	# after the complete geometry fingerprint has been captured.
+	var stone := StyleCompiler.slot("body.primary")
+	var trim := StyleCompiler.slot("trim.warm")
+	var dark := StyleCompiler.slot("mechanism.dark")
+	var steel := StyleCompiler.slot("metal.steel")
+	var arcane := StyleCompiler.slot("effect.arcane")
+	var pipe_glow := StyleCompiler.slot("conduit.vapor")
 
 	var asset := Assembly.new()
 	_add(asset, "platform", _part(Stock.cylinder(base_radius, base_radius,
@@ -406,7 +485,7 @@ func build(p) -> Dictionary:
 	var front_length := size * 0.34 * boom_reach
 	var rear_length := size * 0.245 * boom_reach
 	var crank_center_2d := Vector2(size * 0.225, deck_y + size * 0.20)
-	var linkage := MechanicalConstraints.solve_four_bar({
+	var solve_problem := {"problem_type": "mechanism.four_bar", "parameters": {
 		"crank_center": crank_center_2d,
 		"beam_pivot": Vector2(0.0, pivot_y),
 		"crank_radius": size * 0.055,
@@ -416,9 +495,32 @@ func build(p) -> Dictionary:
 		"plane_z": 0.0,
 		"phase": deg_to_rad(-60.0),
 		"branch_sign": 1.0,
-	}, 64)
-	assert(bool(linkage.ok), str(linkage.get("error", "linkage solve failed")))
+	}, "constraints": [
+		{"id": "pump_loop", "kind": "mechanism.loop_closure", "hard": true,
+			"tolerance": 0.00001},
+		{"id": "pitman_length", "kind": "mechanism.fixed_length", "hard": true,
+			"tolerance": size * 0.00001},
+	]}
+	var solver := FourBarSolver.new()
+	var solve_result := solver.solve(solve_problem, {"samples": 64})
+	assert(str(solve_result.status) == "solved",
+		str(solve_result.get("diagnostics", "linkage solve failed")))
+	var linkage: Dictionary = solve_result.solution
 	var rest: Dictionary = linkage.samples[0].frames
+	var motion_contract := MotionContract.new(resolved_design.content_hash(),
+		solver.descriptor(),
+		["crank", "flywheel", "walking_beam", "horsehead", "pitman",
+			"polish_rod", "pump_shaft"],
+		["crank_axis", "beam_pivot", "crank_pin", "beam_rear_pin", "horsehead_mount"],
+		[{"id": "four_bar_cycle", "samples": linkage.samples.size(),
+			"loop_closure_error": linkage.loop_closure_error,
+			"maximum_fixed_length_error": linkage.maximum_fixed_length_error}],
+		{"loop": true, "minimum_clearance": size * 0.01,
+			"rest_pose": "sample_0"})
+	assert(motion_contract.validate().is_empty(), "motion contract must validate")
+	stages.record("solve_mechanism", "polyforge.mechanism.four_bar@1.0.0",
+		{"resolved_design": resolved_design.content_hash()}, motion_contract,
+		solve_result.diagnostics)
 
 	var walking := _walking_beam(size, front_length, rear_length, frame_depth,
 		stone, trim, dark, arcane)
@@ -487,6 +589,18 @@ func build(p) -> Dictionary:
 		Vector3(pump_center.x + size * 0.15, deck_y + size * 0.12, -size * 0.22)],
 		pipe_radius, pipe_glow, pipe_segments)
 
+	var geometry_hash := GeometryFingerprint.assembly_hash(asset)
+	stages.record("compile_geometry", "arcane_pumpjack.geometry.v1", {
+		"resolved_design": resolved_design.content_hash(),
+		"motion_contract": motion_contract.content_hash(),
+	}, {"geometry_hash": geometry_hash, "parts": asset.parts.size()})
+	var style_compilation := StyleCompiler.apply(asset, appearance_binding)
+	assert(bool(style_compilation.ok), "; ".join(style_compilation.failures))
+	stages.record("compile_appearance", "polyforge.style_slots.v1", {
+		"appearance_intent": asset_intent.appearance_hash(),
+		"geometry": geometry_hash,
+	}, style_compilation)
+
 	var rig := Rig.new()
 	rig.add_bone("root")
 	for bone_name in ["crank", "flywheel", "walking_beam", "horsehead", "pitman",
@@ -512,6 +626,54 @@ func build(p) -> Dictionary:
 		"name": "pump_housing", "center": pump_center, "radius": size * 0.108,
 	}], size * 0.01)
 	rig.add_motion_report("mechanism_clearance", clearance)
+	rig.bind_contract(geometry_hash, motion_contract.content_hash())
+	stages.record("compile_rig", "arcane_pumpjack.rig.v1", {
+		"geometry": geometry_hash,
+		"motion_contract": motion_contract.content_hash(),
+	}, rig.snapshot())
+
+	var anchors := {
+		"deck_center": Vector3(0.0, deck_y, 0.0),
+		"boom_pivot": Vector3(0.0, pivot_y, 0.0),
+		"exhaust": pump_center + Vector3(-size * 0.06, size * 0.35, 0.0),
+		"vapor_outlet": rest_front_pin,
+	}
+	var reference_profile := ReferenceProfile.new({
+		"id": "vapor_derrick_concept_v1",
+		"sha256": "e90f854563b3f8c19d7f30c6b67d1923ecb5727754a76b5fe68e2341ce8d5490",
+		"width": 1536, "height": 1536,
+		"description": "user-supplied square concept of a stylized brass vapor derrick",
+	}, {
+		"foundation": {"selector": {"tags": ["foundation"]}, "minimum": 10},
+		"derrick": {"selector": {"prefixes": ["derrick_front__", "derrick_back__"]},
+			"minimum": 10},
+		"walking_beam": {"selector": {"tags": ["walking_beam"]}, "minimum": 6},
+		"horsehead": {"selector": {"tags": ["horsehead"]}, "minimum": 4},
+		"pump_housing": {"selector": {"tags": ["machine"]}, "minimum": 10},
+		"paired_reservoirs": {"selector": {"prefixes": ["left_reservoir__",
+			"right_reservoir__"]}, "minimum": 10},
+		"process_conduits": {"selector": {"prefixes": ["left_feed_", "right_return_"]},
+			"minimum": 4},
+		"vapor": {"selector": {"tags": ["vapor"]}, "minimum": 4},
+	}, {
+		"deck_center": {"minimum": Vector3(0.35, 0.02, 0.25),
+			"maximum": Vector3(0.65, 0.30, 0.75)},
+		"boom_pivot": {"minimum": Vector3(0.35, 0.55, 0.25),
+			"maximum": Vector3(0.65, 0.95, 0.75)},
+		"exhaust": {"minimum": Vector3(0.25, 0.25, 0.20),
+			"maximum": Vector3(0.70, 0.80, 0.80)},
+		"vapor_outlet": {"minimum": Vector3(0.00, 0.35, 0.15),
+			"maximum": Vector3(0.45, 0.95, 0.85)},
+	}, appearance_slots.keys(), [{"name": "hero height to width",
+		"numerator_axis": 1, "denominator_axis": 0, "minimum": 0.75,
+		"maximum": 1.65}])
+	assert(reference_profile.validate().is_empty(), "reference profile must validate")
+	var contracts := {
+		"asset_intent": asset_intent.to_canonical_dict(),
+		"resolved_design": resolved_design.to_canonical_dict(),
+		"motion_contract": motion_contract.to_canonical_dict(),
+		"appearance_binding": appearance_binding.to_canonical_dict(),
+	}
 
 	return {
 		"name": "arcane_pumpjack",
@@ -527,6 +689,10 @@ func build(p) -> Dictionary:
 		"require_surface_classification": true,
 		"require_part_classification": true,
 		"rig": rig,
+		"contracts": contracts,
+		"process": stages.snapshot(),
+		"style_compilation": CanonicalArtifact.canonicalize(style_compilation),
+		"reference_profile": reference_profile.to_canonical_dict(),
 		"symmetry": [
 			{"name": "derrick front/back reuse", "first": "derrick_front",
 				"second": "derrick_back", "axis": "z", "tolerance": size * 0.00001},
@@ -539,12 +705,7 @@ func build(p) -> Dictionary:
 				size * 0.015, size * 0.05),
 			Checks.require_axis_range("tower_pivot", 2, size * 0.20, size * 0.30),
 		],
-		"anchors": {
-			"deck_center": Vector3(0.0, deck_y, 0.0),
-			"boom_pivot": Vector3(0.0, pivot_y, 0.0),
-			"exhaust": pump_center + Vector3(-size * 0.06, size * 0.35, 0.0),
-			"vapor_outlet": rest_front_pin,
-		},
+		"anchors": anchors,
 		"readability": {
 			"target_pixels": 72, "supersample": 2, "view_set": "octants",
 			"minimum_regions": 3, "minimum_contrast": 0.045,
@@ -562,7 +723,8 @@ func build(p) -> Dictionary:
 		"front": "+Z",
 		"metadata": {
 			"description": "Rigged vapor derrick with an independently implemented four-bar drive",
-			"reference_status": "Silhouette and material hierarchy matched to the supplied vapor-derrick concept",
+			"reference_status": "Compiled and semantically validated against vapor_derrick_concept_v1",
+			"reference_image_sha256": reference_profile.payload.image.sha256,
 			"intentional_asymmetry": ["staggered reservoirs", "process pipes"],
 		},
 	}

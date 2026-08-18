@@ -25,6 +25,10 @@ static func defaults() -> Dictionary:
 		"require_surface_classification": false,
 		"require_part_classification": false,
 		"rig": null,
+		"contracts": {},
+		"process": {},
+		"style_compilation": {},
+		"reference_profile": {},
 		"front": "",
 		"loose": false,
 	}
@@ -49,6 +53,10 @@ static func normalize(raw, source_path := "") -> Dictionary:
 	assert(spec.readability is Dictionary, "recipe readability policy must be a Dictionary")
 	assert(spec.symmetry is Array, "recipe symmetry contracts must be an Array")
 	assert(spec.topology_budget is Dictionary, "recipe topology budget must be a Dictionary")
+	assert(spec.contracts is Dictionary, "recipe contracts must be a Dictionary")
+	assert(spec.process is Dictionary, "recipe process ledger must be a Dictionary")
+	assert(spec.style_compilation is Dictionary, "recipe style compilation must be a Dictionary")
+	assert(spec.reference_profile is Dictionary, "recipe reference profile must be a Dictionary")
 	assert(str(spec.quality_profile) in ["preview", "runtime", "hero"],
 		"recipe quality_profile must be preview, runtime, or hero")
 	return spec
