@@ -19,6 +19,12 @@ const GeometryFingerprint := preload("res://addons/polyforge/core/geometry_finge
 const AssemblyCompiler := preload("res://addons/polyforge/build/assembly_compiler.gd")
 const StageRunner := preload("res://addons/polyforge/build/stage_runner.gd")
 const StyleCompiler := preload("res://addons/polyforge/build/style_compiler.gd")
+const PlanPatch := preload("res://addons/polyforge/core/plan_patch.gd")
+const CandidateGenerator := preload("res://addons/polyforge/build/assembly_candidate_generator.gd")
+const RepairRegistry := preload("res://addons/polyforge/build/repair_registry.gd")
+const RigidTwistRepair := preload("res://addons/polyforge/core/rigid_twist_repair.gd")
+const CandidateRepairStage := preload("res://addons/polyforge/build/candidate_repair_stage.gd")
+const CandidateSelector := preload("res://addons/polyforge/build/candidate_selector.gd")
 
 func _xf(position: Vector3, rotation_degrees := Vector3.ZERO) -> Transform3D:
 	return Transform3D(Basis.from_euler(Vector3(deg_to_rad(rotation_degrees.x),
@@ -209,10 +215,27 @@ func build(p) -> Dictionary:
 		{"id": "mount_core", "a": {"instance": "foundation", "socket": "core_mount"},
 			"b": {"instance": "core", "socket": "foot"}, "twist_degrees": 0.0},
 	]
-	var plan := AssemblyPlan.new(resolved.content_hash(), catalog.content_hash(),
+	var base_plan := AssemblyPlan.new(resolved.content_hash(), catalog.content_hash(),
 		"foundation", instances, connections)
-	assert(plan.validate().is_empty(), "relay assembly plan must validate")
+	assert(base_plan.validate().is_empty(), "relay assembly plan must validate")
 	var solver := RigidAssemblySolver.new(catalog)
+	var proposal_patch := PlanPatch.new(base_plan.content_hash(),
+		{"id": "arcane_relay.variant_proposal", "version": "1.0.0"}, [], [{
+			"id": "try_quarter_turn", "kind": "set_connection_twist",
+			"connection_id": "bridge_right", "twist_degrees": 90.0}], 0,
+		"arcane_relay.variant_proposal.v1")
+	var candidates := CandidateGenerator.generate(base_plan, [{
+		"id": "quarter_turn_proposal", "patch": proposal_patch}])
+	assert(candidates.ok, "; ".join(candidates.failures))
+	var repair_registry := RepairRegistry.new()
+	repair_registry.register(RigidTwistRepair.new(catalog))
+	var repair_result := CandidateRepairStage.run(candidates, solver, repair_registry, 2)
+	assert(repair_result.ok, "; ".join(repair_result.failures))
+	var selection := CandidateSelector.select(catalog, repair_result.artifact, [
+		{"metric": "repair_count", "direction": "min"},
+		{"metric": "max_position_residual", "direction": "min"}])
+	assert(selection.ok, "; ".join(selection.failures))
+	var plan = selection.selected_plan
 	var solve_result := solver.solve({"problem_type": "rigid.socket_assembly",
 		"plan": plan.payload, "constraints": [
 			{"kind": "rigid.socket_mate"}, {"kind": "rigid.clearance"}]})
@@ -228,12 +251,19 @@ func build(p) -> Dictionary:
 	var geometry_hash := GeometryFingerprint.assembly_hash(asset)
 	var style_compilation := StyleCompiler.apply(asset, binding)
 	assert(style_compilation.ok, "; ".join(style_compilation.failures))
-	var stages := StageRunner.new("arcane_relay.rigid_socket_v1")
+	var stages := StageRunner.new("arcane_relay.bounded_repair_v1")
 	stages.record("intent", "arcane_relay.intent.v1", {}, intent)
 	stages.record("resolve_design", "arcane_relay.resolver.v1",
 		{"construction_intent": intent.construction_hash()}, resolved)
-	stages.record("plan_assembly", "arcane_relay.planner.v1",
-		{"resolved_design": resolved.content_hash(), "catalog": catalog.content_hash()}, plan)
+	stages.record("propose_candidates", "polyforge.assembly_candidate_generator@1.0.0",
+		{"resolved_design": resolved.content_hash(), "catalog": catalog.content_hash()},
+		candidates.artifact)
+	stages.record("repair_candidates", "polyforge.candidate_repair_stage@1.0.0",
+		{"candidate_set": candidates.artifact.content_hash()}, repair_result.artifact)
+	stages.record("select_candidate", "polyforge.candidate_selector@1.0.0",
+		{"repair_report": repair_result.artifact.content_hash()}, selection.artifact)
+	stages.record("plan_assembly", "arcane_relay.selected_plan.v1",
+		{"candidate_selection": selection.artifact.content_hash()}, plan)
 	stages.record("solve_rigid", "polyforge.rigid.socket_assembly@1.0.0",
 		{"assembly_plan": plan.content_hash()}, solved, solve_result.diagnostics)
 	stages.record("compile_geometry", "polyforge.solved_assembly_compiler.v1",
@@ -255,6 +285,9 @@ func build(p) -> Dictionary:
 			"asset_intent": intent.to_canonical_dict(),
 			"resolved_design": resolved.to_canonical_dict(),
 			"component_catalog": catalog.snapshot(),
+			"candidate_set": candidates.artifact.to_canonical_dict(),
+			"candidate_repair_report": repair_result.artifact.to_canonical_dict(),
+			"candidate_selection": selection.artifact.to_canonical_dict(),
 			"assembly_plan": plan.to_canonical_dict(),
 			"solved_assembly": solved.to_canonical_dict(),
 			"appearance_binding": binding.to_canonical_dict(),
@@ -286,6 +319,6 @@ func build(p) -> Dictionary:
 					"minimum_visible_fraction": 0.10},
 			}},
 		"front": "+Z",
-		"metadata": {"description": "Typed-socket static relay assembled only from a solved plan",
+		"metadata": {"description": "Typed-socket relay selected through bounded plan repair",
 			"solver": solver.descriptor(), "catalog_hash": catalog.content_hash()},
 	}

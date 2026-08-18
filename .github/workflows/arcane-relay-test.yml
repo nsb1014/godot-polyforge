@@ -82,9 +82,16 @@ jobs:
           manifest = json.loads((root / "arcane_relay.manifest.json").read_text())
           assert manifest["format_version"] == 8
           assert [stage["stage_id"] for stage in manifest["process"]["stages"]] == [
-              "intent", "resolve_design", "plan_assembly", "solve_rigid",
-              "compile_geometry", "compile_appearance"]
+              "intent", "resolve_design", "propose_candidates", "repair_candidates",
+              "select_candidate", "plan_assembly", "solve_rigid", "compile_geometry",
+              "compile_appearance"]
           contracts = manifest["contracts"]
+          candidates = contracts["candidate_repair_report"]["payload"]["candidates"]
+          assert len(candidates) == 2
+          assert any(item["repair_count"] == 1 and item["status"] == "solved"
+                     for item in candidates)
+          assert contracts["candidate_selection"]["payload"][
+              "selected_candidate_id"] == "baseline"
           plan = contracts["assembly_plan"]
           solved = contracts["solved_assembly"]
           assert solved["artifact_type"] == "solved_assembly"

@@ -42,6 +42,28 @@ static func evaluate(spec: Dictionary) -> Dictionary:
 		for required in ["plan_assembly", "solve_rigid"]:
 			if not stage_ids.has(required):
 				failures.append("PROCESS_MISSING_RIGID_STAGE: %s" % required)
+	var has_candidates := contracts.has("candidate_set") or \
+		contracts.has("candidate_repair_report") or contracts.has("candidate_selection")
+	if has_candidates:
+		if not has_rigid_plan:
+			failures.append("PROCESS_CANDIDATES_REQUIRE_RIGID_CONTRACTS")
+		for contract_name in ["candidate_set", "candidate_repair_report",
+				"candidate_selection"]:
+			if not contracts.has(contract_name):
+				failures.append("PROCESS_MISSING_CANDIDATE_CONTRACT: %s" % contract_name)
+		for required in ["propose_candidates", "repair_candidates", "select_candidate"]:
+			if not stage_ids.has(required):
+				failures.append("PROCESS_MISSING_CANDIDATE_STAGE: %s" % required)
+		var candidate_order := ["intent", "resolve_design", "propose_candidates",
+			"repair_candidates", "select_candidate", "plan_assembly", "solve_rigid",
+			"compile_geometry", "compile_appearance"]
+		var previous_index := -1
+		for stage_id in candidate_order:
+			var index := stage_ids.find(stage_id)
+			if index < 0 or index <= previous_index:
+				failures.append("PROCESS_CANDIDATE_STAGE_ORDER_INVALID")
+				break
+			previous_index = index
 	var unhashed := process.duplicate(true)
 	var recorded_hash := str(unhashed.get("pipeline_hash", ""))
 	unhashed.erase("pipeline_hash")
@@ -80,6 +102,37 @@ static func evaluate(spec: Dictionary) -> Dictionary:
 		if str(stages_by_id.get("compile_geometry", {}).get("input_hashes", {}).get(
 				"solved_assembly", "")) != solved_hash:
 			failures.append("PROCESS_GEOMETRY_BYPASSED_SOLVED_ASSEMBLY")
+		if has_candidates and contracts.has("candidate_set") and \
+				contracts.has("candidate_repair_report") and \
+				contracts.has("candidate_selection"):
+			var candidate_hash := CanonicalArtifact.hash_value(contracts.candidate_set)
+			var repair_hash := CanonicalArtifact.hash_value(contracts.candidate_repair_report)
+			var selection_hash := CanonicalArtifact.hash_value(contracts.candidate_selection)
+			if str(contracts.candidate_repair_report.get("payload", {}).get(
+					"candidate_set_hash", "")) != candidate_hash:
+				failures.append("PROCESS_REPAIR_CANDIDATE_HASH_MISMATCH")
+			if str(contracts.candidate_selection.get("payload", {}).get(
+					"repair_report_hash", "")) != repair_hash:
+				failures.append("PROCESS_SELECTION_REPAIR_HASH_MISMATCH")
+			if str(contracts.candidate_selection.get("payload", {}).get(
+					"selected_plan_hash", "")) != plan_hash:
+				failures.append("PROCESS_SELECTION_PLAN_HASH_MISMATCH")
+			if str(stages_by_id.get("propose_candidates", {}).get(
+					"output_hash", "")) != candidate_hash:
+				failures.append("PROCESS_CANDIDATE_STAGE_HASH_MISMATCH")
+			if str(stages_by_id.get("repair_candidates", {}).get(
+					"input_hashes", {}).get("candidate_set", "")) != candidate_hash or \
+					str(stages_by_id.get("repair_candidates", {}).get(
+					"output_hash", "")) != repair_hash:
+				failures.append("PROCESS_REPAIR_STAGE_HASH_MISMATCH")
+			if str(stages_by_id.get("select_candidate", {}).get(
+					"input_hashes", {}).get("repair_report", "")) != repair_hash or \
+					str(stages_by_id.get("select_candidate", {}).get(
+					"output_hash", "")) != selection_hash:
+				failures.append("PROCESS_SELECTION_STAGE_HASH_MISMATCH")
+			if str(stages_by_id.get("plan_assembly", {}).get(
+					"input_hashes", {}).get("candidate_selection", "")) != selection_hash:
+				failures.append("PROCESS_PLAN_BYPASSED_CANDIDATE_SELECTION")
 	return {"ok": failures.is_empty(), "failures": failures,
 		"stages": stage_ids.size(), "stage_ids": stage_ids,
 		"pipeline_hash": recorded_hash}

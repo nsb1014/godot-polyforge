@@ -87,6 +87,12 @@ Godot before the build succeeds.
   cardinality, loop closure, connectivity, and keepout failures as owned solver diagnostics.
 - Keep solver domains narrow. Rigid assemblies, mechanisms, and deformable characters share the
   `SolverStage` invocation contract, not one generic internal solver.
+- Generate candidate plans without geometry. Reject or repair hard failures before ranking, and
+  rank only candidates that an independent domain validator accepts.
+- Express repairs as hash-bound `PlanPatch` artifacts. Enforce plan locks, whitelist operation
+  kinds, bound attempts, retain complete history, and rebuild downstream artifacts.
+- Never accept solver status as authority. Recompute hard constraints independently, select a plan,
+  then perform the authoritative solve again before geometry compilation.
 - Pin rigid motion in `MotionContract` and bind the compiled rig to the exact geometry and contract
   hashes it consumed.
 - Record stage input/output hashes with `StageRunner`. The runner owns ordering and provenance,
@@ -114,6 +120,8 @@ Godot before the build succeeds.
   invocation contract with domain-specific math and diagnostics.
 - `core/assembly_plan.gd`, `core/solved_assembly.gd`, and `build/assembly_compiler.gd`: isolated
   planning, solving, and geometry ownership for modular rigid assets.
+- `core/plan_patch.gd`, `build/candidate_repair_stage.gd`, and `build/candidate_selector.gd`:
+  explicit bounded repair, independent hard gates, and deterministic valid-only ranking.
 - `build/stage_runner.gd` and `build/style_compiler.gd`: isolated stages and enforced style boundary.
 - `quality/reference_validation.gd` and `quality/visual_evidence.gd`: reference and renderer evidence.
 - `core/attachments.gd`: sampled surface frames, child bindings, and attachment drift checks.

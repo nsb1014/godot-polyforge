@@ -98,6 +98,40 @@ static func canonicalize(value):
 		"canonical artifacts reject runtime objects and callables")
 	return value
 
+static func decanonicalize(value):
+	if value is Array:
+		var array := []
+		for item in value:
+			array.append(decanonicalize(item))
+		return array
+	if value is Dictionary:
+		var type := str(value.get("$type", ""))
+		var items: Array = value.get("value", [])
+		if type == "Vector2" and items.size() == 2:
+			return Vector2(float(items[0]), float(items[1]))
+		if type == "Vector2i" and items.size() == 2:
+			return Vector2i(int(items[0]), int(items[1]))
+		if type == "Vector3" and items.size() == 3:
+			return Vector3(float(items[0]), float(items[1]), float(items[2]))
+		if type == "Vector3i" and items.size() == 3:
+			return Vector3i(int(items[0]), int(items[1]), int(items[2]))
+		if type == "Color" and items.size() == 4:
+			return Color(float(items[0]), float(items[1]), float(items[2]), float(items[3]))
+		if type == "Basis" and items.size() == 3:
+			return Basis(decanonicalize(items[0]), decanonicalize(items[1]),
+				decanonicalize(items[2]))
+		if type == "Transform3D":
+			return Transform3D(decanonicalize(value.get("basis", {})),
+				decanonicalize(value.get("origin", {})))
+		if type == "AABB":
+			return AABB(decanonicalize(value.get("position", {})),
+				decanonicalize(value.get("size", {})))
+		var result := {}
+		for key in value:
+			result[key] = decanonicalize(value[key])
+		return result
+	return value
+
 static func _normalized_float(value: float) -> float:
 	assert(is_finite(value), "canonical artifacts reject non-finite floats")
 	var normalized := snappedf(value, 0.000000001)
