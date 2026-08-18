@@ -42,6 +42,17 @@ static func evaluate(spec: Dictionary) -> Dictionary:
 		for required in ["plan_assembly", "solve_rigid"]:
 			if not stage_ids.has(required):
 				failures.append("PROCESS_MISSING_RIGID_STAGE: %s" % required)
+	var has_suspension := contracts.has("suspension_plan") or \
+		contracts.has("suspension_compilation")
+	if has_suspension:
+		if not has_rigid_plan:
+			failures.append("PROCESS_SUSPENSION_REQUIRES_RIGID_CONTRACTS")
+		for contract_name in ["suspension_plan", "suspension_compilation"]:
+			if not contracts.has(contract_name):
+				failures.append("PROCESS_MISSING_SUSPENSION_CONTRACT: %s" % contract_name)
+		for required in ["plan_suspension", "compile_suspension"]:
+			if not stage_ids.has(required):
+				failures.append("PROCESS_MISSING_SUSPENSION_STAGE: %s" % required)
 	var has_candidates := contracts.has("candidate_set") or \
 		contracts.has("candidate_repair_report") or contracts.has("candidate_selection")
 	if has_candidates:
@@ -64,6 +75,32 @@ static func evaluate(spec: Dictionary) -> Dictionary:
 				failures.append("PROCESS_CANDIDATE_STAGE_ORDER_INVALID")
 				break
 			previous_index = index
+	var has_cohesion := contracts.has("design_brief") or \
+		contracts.has("cohesion_contract") or contracts.has("interface_plan") or \
+		contracts.has("interface_compilation")
+	if has_cohesion:
+		if not has_rigid_plan:
+			failures.append("PROCESS_COHESION_REQUIRES_RIGID_CONTRACTS")
+		for contract_name in ["design_brief", "cohesion_contract", "interface_plan",
+				"interface_compilation"]:
+			if not contracts.has(contract_name):
+				failures.append("PROCESS_MISSING_COHESION_CONTRACT: %s" % contract_name)
+		for required in ["resolve_brief", "plan_interfaces", "compile_interfaces"]:
+			if not stage_ids.has(required):
+				failures.append("PROCESS_MISSING_COHESION_STAGE: %s" % required)
+		var cohesion_order := ["intent", "resolve_brief", "resolve_design",
+			"plan_assembly", "solve_rigid", "plan_interfaces", "compile_geometry",
+			"compile_interfaces"]
+		if has_suspension:
+			cohesion_order.append_array(["plan_suspension", "compile_suspension"])
+		cohesion_order.append("compile_appearance")
+		var previous_cohesion_index := -1
+		for stage_id in cohesion_order:
+			var index := stage_ids.find(stage_id)
+			if index < 0 or index <= previous_cohesion_index:
+				failures.append("PROCESS_COHESION_STAGE_ORDER_INVALID")
+				break
+			previous_cohesion_index = index
 	var unhashed := process.duplicate(true)
 	var recorded_hash := str(unhashed.get("pipeline_hash", ""))
 	unhashed.erase("pipeline_hash")
@@ -133,6 +170,83 @@ static func evaluate(spec: Dictionary) -> Dictionary:
 			if str(stages_by_id.get("plan_assembly", {}).get(
 					"input_hashes", {}).get("candidate_selection", "")) != selection_hash:
 				failures.append("PROCESS_PLAN_BYPASSED_CANDIDATE_SELECTION")
+		if has_cohesion and contracts.has("design_brief") and \
+				contracts.has("cohesion_contract") and contracts.has("interface_plan") and \
+				contracts.has("interface_compilation"):
+			var intent_hash := CanonicalArtifact.hash_value(contracts.asset_intent)
+			var brief_hash := CanonicalArtifact.hash_value(contracts.design_brief)
+			var cohesion_hash := CanonicalArtifact.hash_value(contracts.cohesion_contract)
+			var interface_plan_hash := CanonicalArtifact.hash_value(contracts.interface_plan)
+			var interface_compilation_hash := CanonicalArtifact.hash_value(
+				contracts.interface_compilation)
+			if str(contracts.design_brief.get("payload", {}).get("intent_hash", "")) != \
+					intent_hash:
+				failures.append("PROCESS_BRIEF_INTENT_HASH_MISMATCH")
+			if str(contracts.cohesion_contract.get("payload", {}).get(
+					"design_brief_hash", "")) != brief_hash:
+				failures.append("PROCESS_COHESION_BRIEF_HASH_MISMATCH")
+			if str(contracts.interface_plan.get("payload", {}).get(
+					"solved_assembly_hash", "")) != solved_hash or \
+					str(contracts.interface_plan.get("payload", {}).get(
+					"cohesion_contract_hash", "")) != cohesion_hash:
+				failures.append("PROCESS_INTERFACE_PLAN_INPUT_HASH_MISMATCH")
+			if str(contracts.interface_compilation.get("payload", {}).get(
+					"solved_assembly_hash", "")) != solved_hash or \
+					str(contracts.interface_compilation.get("payload", {}).get(
+					"interface_plan_hash", "")) != interface_plan_hash:
+				failures.append("PROCESS_INTERFACE_COMPILATION_INPUT_HASH_MISMATCH")
+			if str(stages_by_id.get("resolve_brief", {}).get("output_hash", "")) != brief_hash or \
+					str(stages_by_id.get("resolve_design", {}).get(
+					"input_hashes", {}).get("design_brief", "")) != brief_hash:
+				failures.append("PROCESS_BRIEF_STAGE_HASH_MISMATCH")
+			if str(stages_by_id.get("plan_interfaces", {}).get(
+					"output_hash", "")) != interface_plan_hash:
+				failures.append("PROCESS_INTERFACE_PLAN_STAGE_HASH_MISMATCH")
+			if str(stages_by_id.get("compile_interfaces", {}).get(
+					"output_hash", "")) != interface_compilation_hash:
+				failures.append("PROCESS_INTERFACE_COMPILATION_STAGE_HASH_MISMATCH")
+			if not has_suspension and str(stages_by_id.get("compile_appearance", {}).get(
+					"input_hashes", {}).get("geometry", "")) != str(
+					contracts.interface_compilation.get("payload", {}).get(
+						"output_geometry_hash", "")):
+				failures.append("PROCESS_STYLE_BYPASSED_INTERFACE_GEOMETRY")
+		if has_suspension and contracts.has("suspension_plan") and \
+				contracts.has("suspension_compilation"):
+			var suspension_plan_hash := CanonicalArtifact.hash_value(
+				contracts.suspension_plan)
+			var suspension_compilation_hash := CanonicalArtifact.hash_value(
+				contracts.suspension_compilation)
+			var suspension_input := str(contracts.suspension_plan.get("payload", {}).get(
+				"input_geometry_hash", ""))
+			if str(contracts.suspension_plan.get("payload", {}).get(
+					"solved_assembly_hash", "")) != solved_hash:
+				failures.append("PROCESS_SUSPENSION_PLAN_INPUT_HASH_MISMATCH")
+			if str(contracts.suspension_compilation.get("payload", {}).get(
+					"solved_assembly_hash", "")) != solved_hash or str(
+					contracts.suspension_compilation.get("payload", {}).get(
+					"suspension_plan_hash", "")) != suspension_plan_hash:
+				failures.append("PROCESS_SUSPENSION_COMPILATION_INPUT_HASH_MISMATCH")
+			if str(contracts.suspension_compilation.get("payload", {}).get(
+					"input_geometry_hash", "")) != suspension_input:
+				failures.append("PROCESS_SUSPENSION_GEOMETRY_HASH_MISMATCH")
+			if has_cohesion and contracts.has("interface_compilation") and \
+					suspension_input != str(contracts.interface_compilation.get(
+					"payload", {}).get("output_geometry_hash", "")):
+				failures.append("PROCESS_SUSPENSION_BYPASSED_INTERFACE_GEOMETRY")
+			if str(stages_by_id.get("plan_suspension", {}).get(
+					"output_hash", "")) != suspension_plan_hash or str(
+					stages_by_id.get("compile_suspension", {}).get(
+					"output_hash", "")) != suspension_compilation_hash:
+				failures.append("PROCESS_SUSPENSION_STAGE_HASH_MISMATCH")
+			if str(stages_by_id.get("compile_suspension", {}).get(
+					"input_hashes", {}).get("suspension_plan", "")) != \
+					suspension_plan_hash:
+				failures.append("PROCESS_SUSPENSION_STAGE_BYPASSED_PLAN")
+			if str(stages_by_id.get("compile_appearance", {}).get(
+					"input_hashes", {}).get("geometry", "")) != str(
+					contracts.suspension_compilation.get("payload", {}).get(
+					"output_geometry_hash", "")):
+				failures.append("PROCESS_STYLE_BYPASSED_SUSPENSION_GEOMETRY")
 	return {"ok": failures.is_empty(), "failures": failures,
 		"stages": stage_ids.size(), "stage_ids": stage_ids,
 		"pipeline_hash": recorded_hash}

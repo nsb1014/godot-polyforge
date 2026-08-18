@@ -3,7 +3,8 @@ extends RefCounted
 
 const CanonicalArtifact := preload("res://addons/polyforge/core/canonical_artifact.gd")
 
-static func compile(reference: Dictionary, readability: Dictionary) -> Dictionary:
+static func compile(reference: Dictionary, readability: Dictionary,
+		cohesion := {}) -> Dictionary:
 	var semantic_views := []
 	for view in readability.get("views", []):
 		var report: Dictionary = view.get("readability", {})
@@ -38,7 +39,10 @@ static func compile(reference: Dictionary, readability: Dictionary) -> Dictionar
 		},
 		"reference_image": reference.get("reference_image", {}),
 		"reference_ok": reference.get("ok", true),
+		"reference_preference_score": reference.get("preference_score", 1.0),
 		"reference_vector": reference_vector,
+		"cohesion_ok": cohesion.get("ok", true),
+		"mass_hierarchy": cohesion.get("mass_hierarchy", {}),
 		"semantic_render_available": readability.get("available", false),
 		"semantic_render_ok": readability.get("ok", false),
 		"semantic_views": semantic_views,

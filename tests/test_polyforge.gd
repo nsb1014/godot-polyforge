@@ -28,6 +28,12 @@ const BuildPipeline := preload("res://addons/polyforge/build/build_pipeline.gd")
 const CanonicalArtifact := preload("res://addons/polyforge/core/canonical_artifact.gd")
 const AssetIntent := preload("res://addons/polyforge/core/asset_intent.gd")
 const ResolvedDesign := preload("res://addons/polyforge/core/resolved_design.gd")
+const DesignBrief := preload("res://addons/polyforge/core/design_brief.gd")
+const CohesionContract := preload("res://addons/polyforge/core/cohesion_contract.gd")
+const InterfacePlan := preload("res://addons/polyforge/core/interface_plan.gd")
+const InterfaceCompilation := preload("res://addons/polyforge/core/interface_compilation.gd")
+const SuspensionPlan := preload("res://addons/polyforge/core/suspension_plan.gd")
+const SuspensionCompilation := preload("res://addons/polyforge/core/suspension_compilation.gd")
 const AppearanceStyleBinding := preload("res://addons/polyforge/core/appearance_style_binding.gd")
 const FourBarSolver := preload("res://addons/polyforge/core/four_bar_solver.gd")
 const GeometryFingerprint := preload("res://addons/polyforge/core/geometry_fingerprint.gd")
@@ -39,6 +45,7 @@ const AssemblyPlan := preload("res://addons/polyforge/core/assembly_plan.gd")
 const SolvedAssembly := preload("res://addons/polyforge/core/solved_assembly.gd")
 const RigidAssemblySolver := preload("res://addons/polyforge/core/rigid_assembly_solver.gd")
 const AssemblyCompiler := preload("res://addons/polyforge/build/assembly_compiler.gd")
+const SuspensionCompiler := preload("res://addons/polyforge/build/suspension_compiler.gd")
 const PlanPatch := preload("res://addons/polyforge/core/plan_patch.gd")
 const PlanPatchApplier := preload("res://addons/polyforge/build/plan_patch_applier.gd")
 const CandidateGenerator := preload("res://addons/polyforge/build/assembly_candidate_generator.gd")
@@ -51,6 +58,10 @@ const CandidateSelection := preload("res://addons/polyforge/core/candidate_selec
 const CandidateSelector := preload("res://addons/polyforge/build/candidate_selector.gd")
 const RigidSolutionValidation := preload("res://addons/polyforge/quality/rigid_solution_validation.gd")
 const ProcessValidation := preload("res://addons/polyforge/quality/process_validation.gd")
+const ReferenceValidation := preload("res://addons/polyforge/quality/reference_validation.gd")
+const CohesionValidation := preload("res://addons/polyforge/quality/cohesion_validation.gd")
+const MassHierarchyValidation := preload("res://addons/polyforge/quality/mass_hierarchy_validation.gd")
+const SuspensionValidation := preload("res://addons/polyforge/quality/suspension_validation.gd")
 
 var failures := 0
 
@@ -108,6 +119,12 @@ func _has_diagnostic(result: Dictionary, code: String) -> bool:
 			return true
 	return false
 
+func _has_prefix(messages, prefix: String) -> bool:
+	for message in messages:
+		if str(message).begins_with(prefix):
+			return true
+	return false
+
 func _candidate(report, id: String) -> Dictionary:
 	for candidate in report.payload.candidates:
 		if str(candidate.id) == id:
@@ -132,6 +149,28 @@ func _initialize() -> void:
 		{"size": 2.0, "units": "meters"})
 	check(resolved_a.content_hash() == resolved_b.content_hash(),
 		"canonical hashing is stable across dictionary insertion order")
+	var brief := DesignBrief.new(intent_a.content_hash(), {"archetype": "test machine"}, [
+		{"id": "primary", "tier": "primary"},
+		{"id": "secondary", "tier": "secondary"},
+		{"id": "tertiary", "tier": "tertiary"},
+	], ["one readable core"], ["shared junction profile"])
+	var cohesion_contract := CohesionContract.new(brief.content_hash(),
+		["root", "bridge"], ["left_closure"], {"profile_id": "test.band.v1",
+			"allowed_families": ["rigid.box_collar"]}, [
+			{"id": "primary", "tier": "primary", "minimum_share": 0.55,
+				"target_share": 0.65, "maximum_share": 0.80},
+			{"id": "secondary", "tier": "secondary", "minimum_share": 0.15,
+				"target_share": 0.25, "maximum_share": 0.35},
+			{"id": "tertiary", "tier": "tertiary", "minimum_share": 0.04,
+				"target_share": 0.10, "maximum_share": 0.15},
+		], [{"higher": "primary", "lower": "secondary", "minimum_ratio": 2.0},
+			{"higher": "secondary", "lower": "tertiary", "minimum_ratio": 1.5}], true)
+	check(brief.validate().is_empty() and cohesion_contract.validate().is_empty() and
+		DesignBrief.from_canonical_dict(brief.to_canonical_dict()).content_hash() ==
+			brief.content_hash() and CohesionContract.from_canonical_dict(
+			cohesion_contract.to_canonical_dict()).content_hash() ==
+			cohesion_contract.content_hash(),
+		"design and cohesion contracts round-trip as immutable canonical artifacts")
 	var invalid_binding := AppearanceStyleBinding.new(intent_a.appearance_hash(), {
 		"body": {"affects_geometry": true, "color": Color.WHITE}})
 	check(not invalid_binding.validate().is_empty(),
@@ -188,6 +227,32 @@ func _initialize() -> void:
 		AssemblyCompiler.compile(rigid_catalog, rigid_plan).failures[0] ==
 		"GEOMETRY_REQUIRES_SOLVED_ASSEMBLY",
 		"geometry ownership boundary rejects an unsolved assembly plan")
+	var rigid_geometry = AssemblyCompiler.compile(rigid_catalog, rigid_artifact).assembly
+	var suspension_plan := SuspensionPlan.new(rigid_artifact.content_hash(),
+		GeometryFingerprint.assembly_hash(rigid_geometry), [{"id": "test_cable",
+			"a": {"instance": "root", "socket": "left"},
+			"b": {"instance": "root", "socket": "right"}, "radius": 0.02,
+			"minimum_length": 1.9, "maximum_length": 2.1,
+			"material_slot": "test.rope", "profile_id": "test.cable.v1"}])
+	var suspension_result := SuspensionCompiler.compile(rigid_catalog, rigid_artifact,
+		rigid_geometry, suspension_plan)
+	check(suspension_result.ok and suspension_result.artifact.payload.members.size() == 1 and
+		SuspensionPlan.from_canonical_dict(suspension_plan.to_canonical_dict()).content_hash() ==
+			suspension_plan.content_hash() and SuspensionCompilation.from_canonical_dict(
+			suspension_result.artifact.to_canonical_dict()).content_hash() ==
+			suspension_result.artifact.content_hash(),
+		"suspension plans compile deterministically and round-trip their evidence")
+	var missing_socket_plan := SuspensionPlan.new(rigid_artifact.content_hash(),
+		GeometryFingerprint.assembly_hash(rigid_geometry), [{"id": "bad_cable",
+			"a": {"instance": "root", "socket": "missing"},
+			"b": {"instance": "root", "socket": "right"}, "radius": 0.02,
+			"minimum_length": 0.1, "maximum_length": 3.0,
+			"material_slot": "test.rope", "profile_id": "test.cable.v1"}])
+	var missing_socket_result := SuspensionCompiler.compile(rigid_catalog, rigid_artifact,
+		rigid_geometry, missing_socket_plan)
+	check(not missing_socket_result.ok and _has_prefix(missing_socket_result.failures,
+		"SUSPENSION_UNKNOWN_ENDPOINT"),
+		"suspension compilation fails closed on an unknown solved socket")
 	var rigid_unsupported := rigid_solver.solve({"problem_type": "deform.character"})
 	check(rigid_unsupported.status == "unsupported" and
 		_has_diagnostic(rigid_unsupported, "SOLVER_UNSUPPORTED_PROBLEM"),
@@ -470,6 +535,32 @@ func _initialize() -> void:
 		"maximum_delta": 0.05}]})
 	check(paired_visibility.ok and paired_visibility.visibility_balance.measurements.size() == 1,
 		"paired rendered visibility accepts balanced reusable structure across opposite views")
+	var hierarchy_readability := {"available": true, "views": [
+		{"yaw": 0.0, "part_visibility": {
+			"primary": {"potential_pixels": 650}, "secondary": {"potential_pixels": 250},
+			"tertiary": {"potential_pixels": 100}}},
+		{"yaw": 90.0, "part_visibility": {
+			"primary": {"potential_pixels": 680}, "secondary": {"potential_pixels": 230},
+			"tertiary": {"potential_pixels": 90}}},
+		{"yaw": 180.0, "part_visibility": {
+			"primary": {"potential_pixels": 620}, "secondary": {"potential_pixels": 270},
+			"tertiary": {"potential_pixels": 110}}},
+	]}
+	var hierarchy := MassHierarchyValidation.evaluate(hierarchy_readability,
+		cohesion_contract.to_canonical_dict())
+	check(hierarchy.ok and hierarchy.score > 0.7 and hierarchy.confidence > 0.9 and
+		float(hierarchy.median_shares.primary) > float(hierarchy.median_shares.secondary),
+		"mass hierarchy scores recipe targets with robust multi-view confidence")
+	var flat_hierarchy := hierarchy_readability.duplicate(true)
+	for view in flat_hierarchy.views:
+		view.part_visibility.primary.potential_pixels = 400
+		view.part_visibility.secondary.potential_pixels = 400
+		view.part_visibility.tertiary.potential_pixels = 200
+	var rejected_hierarchy := MassHierarchyValidation.evaluate(flat_hierarchy,
+		cohesion_contract.to_canonical_dict())
+	check(not rejected_hierarchy.ok and _has_prefix(rejected_hierarchy.failures,
+		"MASS_HIERARCHY_"),
+		"mass hierarchy rejects locally plausible parts with no declared visual dominance")
 
 	var module := Component.new("test_beam")
 	var module_mesh := Stock.with_material(Stock.box(Vector3(2.0, 0.2, 0.2)),
@@ -609,6 +700,22 @@ func _initialize() -> void:
 		"e90f854563b3f8c19d7f30c6b67d1923ecb5727754a76b5fe68e2341ce8d5490" and
 		vapor_validation.reference.measurements.size() >= 18,
 		"reference evidence is pinned to the supplied image and reports measured semantics")
+	var relaxed_reference := vapor_derrick.duplicate(true)
+	relaxed_reference.anchors.boom_pivot = Vector3(999.0, 999.0, 999.0)
+	var relaxed_validation := BuildPipeline.validate(relaxed_reference)
+	check(relaxed_validation.ok and relaxed_validation.reference.ok and
+		not relaxed_validation.reference.warnings.is_empty(),
+		"preferred reference placement reports drift without overriding asset validity")
+	var required_reference := ReferenceValidation.evaluate({
+		"assembly": component_asset, "anchors": {}, "contracts": {},
+		"reference_profile": {"payload": {
+			"image": {"sha256": "required-test"},
+			"semantic_groups": {"missing_signature": {"selector": {
+				"names": ["does_not_exist"]}, "minimum": 1, "policy": "required"}},
+			"anchors": {}, "required_appearance_slots": [], "proportions": [],
+			"policies": {"semantic_groups": "required"}}}})
+	check(not required_reference.ok and required_reference.failures.size() == 1,
+		"required reference identity remains a hard semantic gate")
 	check(vapor_derrick.style_compilation.geometry_hash_before ==
 		vapor_derrick.style_compilation.geometry_hash_after and
 		vapor_derrick.rig.provenance.geometry_hash ==
@@ -616,10 +723,12 @@ func _initialize() -> void:
 		"style and rig stages enforce geometry ownership through matching hashes")
 	var arcane_relay := AssetRecipe.load_file("res://examples/arcane_relay_recipe.gd")
 	var relay_validation := BuildPipeline.validate(arcane_relay)
-	check(relay_validation.ok and relay_validation.process.stages == 9 and
+	check(relay_validation.ok and relay_validation.process.stages == 12 and
 		arcane_relay.contracts.has("assembly_plan") and
-		arcane_relay.contracts.has("solved_assembly"),
-		"static relay completes the plan, specialized solve, geometry, and style stages")
+		arcane_relay.contracts.has("solved_assembly") and
+		arcane_relay.contracts.has("cohesion_contract") and
+		arcane_relay.contracts.has("interface_compilation"),
+		"static relay completes semantic brief, solve, interface, geometry, and style stages")
 	check(arcane_relay.contracts.candidate_selection.payload.selected_candidate_id ==
 		"baseline" and arcane_relay.contracts.candidate_repair_report.payload.candidates.size() == 2,
 		"relay hard-gates two candidates and prefers the valid zero-repair baseline")
@@ -645,10 +754,49 @@ func _initialize() -> void:
 		arcane_relay.style_compilation.geometry_hash_before ==
 		arcane_relay.style_compilation.geometry_hash_after,
 		"relay provenance binds geometry to the accepted plan while style stays non-geometric")
+	check(relay_validation.cohesion.ok and relay_validation.cohesion.available and
+		relay_validation.cohesion.measurements.size() == 5 and
+		arcane_relay.contracts.interface_plan.payload.solved_assembly_hash ==
+			CanonicalArtifact.hash_value(arcane_relay.contracts.solved_assembly) and
+		arcane_relay.contracts.interface_compilation.payload.base_geometry_hash !=
+			arcane_relay.contracts.interface_compilation.payload.output_geometry_hash and
+		arcane_relay.style_compilation.geometry_hash_after ==
+			arcane_relay.contracts.interface_compilation.payload.output_geometry_hash,
+		"relay adds measured junction geometry without reopening the solved assembly")
+	var forged_cohesion: Dictionary = arcane_relay.duplicate(true)
+	forged_cohesion.contracts.interface_compilation.payload.connections[0].a_overlap = 0.0
+	var forged_result := CohesionValidation.evaluate(forged_cohesion)
+	check(not forged_result.ok and _has_prefix(forged_result.failures,
+		"COHESION_ENDPOINT_OVERLAP_FAILED"),
+		"cohesion rejects a nominal socket connection reduced to point contact")
+	var forged_family: Dictionary = arcane_relay.duplicate(true)
+	forged_family.contracts.interface_plan.payload.treatments[0].family = \
+		"rigid.unapproved_transition"
+	var forged_family_result := CohesionValidation.evaluate(forged_family)
+	check(not forged_family_result.ok and _has_prefix(forged_family_result.failures,
+		"COHESION_INTERFACE_FAMILY_NOT_ALLOWED"),
+		"cohesion rejects interface geometry outside the brief-owned grammar")
 	var relay_residuals: Array = arcane_relay.contracts.solved_assembly.payload.residuals
 	check(relay_residuals.size() == 5 and relay_residuals.all(
 		func(residual): return bool(residual.get("ok", false))),
 		"reference relay records passing residual evidence for every socket connection")
+	var aerostat := AssetRecipe.load_file("res://examples/arcane_aerostat_recipe.gd")
+	var aerostat_validation := BuildPipeline.validate(aerostat)
+	check(aerostat_validation.ok and aerostat_validation.process.stages == 11 and
+		aerostat_validation.suspension.ok and aerostat_validation.suspension.members == 5 and
+		aerostat.contracts.suspension_plan.payload.input_geometry_hash ==
+			aerostat.contracts.interface_compilation.payload.output_geometry_hash and
+		aerostat.style_compilation.geometry_hash_after ==
+			aerostat.contracts.suspension_compilation.payload.output_geometry_hash,
+		"aerostat preserves rigid, interface, suspension, and style ownership through one hash chain")
+	var forged_suspension: Dictionary = aerostat.duplicate(true)
+	for evidence in forged_suspension.contracts.suspension_compilation.payload.members:
+		if str(evidence.id) == "rope_fl":
+			evidence.length += 0.5
+	var forged_suspension_result := SuspensionValidation.evaluate(forged_suspension)
+	check(not forged_suspension_result.ok and _has_prefix(
+		forged_suspension_result.failures, "SUSPENSION_PAIR_LENGTH_MISMATCH"),
+		"suspension validation rejects asymmetric paired load paths")
 
 	var recipe := AssetRecipe.normalize({
 		"name": "named_test",

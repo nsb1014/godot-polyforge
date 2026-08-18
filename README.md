@@ -15,7 +15,14 @@ eight-view rendering.
 `examples/arcane_relay_recipe.gd` is the independent static-assembly proof. It compiles a
 geometry-free `AssemblyPlan` through typed sockets and the specialized
 `RigidAssemblySolver`, then permits geometry generation only from the resulting
-`SolvedAssembly`.
+`SolvedAssembly`. A separate rigid interface compiler adds measured junction geometry without
+changing solved transforms, and a cohesion contract checks attachment and multi-view mass hierarchy
+before reference preferences are considered.
+
+`examples/arcane_aerostat_recipe.gd` extends that proof to a compound suspended asset. Rigid
+placement owns the envelope, basket, lantern, and side pods; interface compilation owns only the
+pod collars; a hash-bound suspension plan emits and verifies ropes without moving any solved
+component; appearance remains the final non-geometric stage.
 
 ## Modules
 
@@ -36,6 +43,12 @@ geometry-free `AssemblyPlan` through typed sockets and the specialized
 | `core/assembly_candidate_set.gd` | Canonical geometry-free candidate plans from one planner invocation |
 | `core/candidate_repair_report.gd` | Bounded repair histories and provisional solver evidence |
 | `core/candidate_selection.gd` | Independent hard-gate evidence and explicit soft-objective selection |
+| `core/design_brief.gd` | Immutable semantic identity, mass hierarchy, signatures, and reference policy |
+| `core/cohesion_contract.gd` | Asset-specific backbone, interface grammar, and projected-mass targets |
+| `core/interface_plan.gd` | Connection-local transition treatments bound to one solved assembly |
+| `core/interface_compilation.gd` | Hash-linked interface geometry and measured endpoint-overlap evidence |
+| `core/suspension_plan.gd` | Socket-to-socket tension members bound to solved transforms and input geometry |
+| `core/suspension_compilation.gd` | Hash-linked emitted-member and measured-length evidence |
 | `core/surface_types.gd` | Orthogonal construction, role, repetition, and motion taxonomy |
 | `core/topology_budget.gd` | Play-size adaptive topology profiles and rendered/unique triangle accounting |
 | `core/rig.gd` | Skeleton bones, skin bindings, clips, and validated motion reports |
@@ -61,7 +74,10 @@ geometry-free `AssemblyPlan` through typed sockets and the specialized
 | `quality/rig_validation.gd` | Skeleton, skin, clip-loop, and mechanical report validation |
 | `quality/process_validation.gd` | Stage-ledger and cross-stage ownership validation |
 | `quality/rigid_solution_validation.gd` | Solver-independent recomputation of rigid transforms, sockets, and clearance |
-| `quality/reference_validation.gd` | Renderer-independent semantic evidence against a pinned reference profile |
+| `quality/reference_validation.gd` | Required, preferred, and informational semantic evidence from a pinned reference profile |
+| `quality/cohesion_validation.gd` | Hard backbone, interface-profile, geometry-hash, and endpoint-overlap validation |
+| `quality/mass_hierarchy_validation.gd` | Recipe-declared projected-area bands and dominance across rendered views |
+| `quality/suspension_validation.gd` | Suspension provenance, emitted-part, range, and paired-length validation |
 | `quality/visual_evidence.gd` | Normalized cross-renderer evidence vectors and renderer-scoped baseline policy |
 | `terrain/zone.gd` | Landforms, spline cuts, surface rules, and constrained deterministic scatter |
 | `exporters/viewer_export.gd` | JSON and self-contained HTML export for the bundled WebGL viewer |
@@ -72,6 +88,8 @@ geometry-free `AssemblyPlan` through typed sockets and the specialized
 | `build/stage_runner.gd` | Immutable domain-free dependency and provenance ledger |
 | `build/style_compiler.gd` | Material-slot binding with geometry-hash enforcement |
 | `build/assembly_compiler.gd` | Geometry compilation restricted to accepted solved assemblies |
+| `build/rigid_interface_compiler.gd` | Deterministic collars and transition geometry inside solved rigid connections |
+| `build/suspension_compiler.gd` | Deterministic tension members between solved typed sockets |
 | `build/assembly_candidate_generator.gd` | Deterministic expansion of a base plan into proposed variants |
 | `build/candidate_repair_stage.gd` | Bounded diagnostic/patch/re-solve loop with full history |
 | `build/candidate_selector.gd` | Hard-valid eligibility followed by declared deterministic ranking |
@@ -205,6 +223,28 @@ socket compatibility, cardinality, twist, loop residuals, and explicit keepout c
 hard-valid candidates reach `CandidateSelector`; declared soft objectives rank that eligible set.
 The selected plan is solved once more before geometry compilation, preventing candidate-loop state
 from becoming production authority.
+
+Reference profiles describe evidence; they do not dictate construction. Each rule is explicitly
+`required`, `preferred`, or `informational`. Missing required identity fails, while preferred anchor
+and proportion drift remains inspectable evidence and cannot override a cohesive valid design.
+
+`DesignBrief` freezes semantic identity and mass roles before construction. `CohesionContract`
+declares the structural backbone, repeated interface profile, projected-area bands, and dominance
+ratios for the specific recipe. After the rigid solve, `InterfacePlan` may add collars, sleeves, or
+brackets but cannot move a component. Endpoint overlap is measured from emitted geometry, and the
+style compiler consumes the post-interface geometry hash.
+
+Remote suspended masses are still placed by the rigid solver so their transforms stay
+authoritative. `SuspensionPlan` then references typed endpoints on those solved instances.
+`SuspensionCompiler` can add straight tension members and length evidence, but it cannot reposition
+an endpoint or repair a rigid solve. Paired-member tolerances are validated independently, and the
+style compiler must consume the post-suspension geometry hash.
+
+Mass hierarchy is deliberately not a universal aesthetic score. Godot renders each declared mass
+group in isolation, normalizes its projected area against the declared groups, and uses the median
+share across views. Recipes own acceptable bands, preferred targets, and dominance ratios. The
+bands and minimum ratios decide pass or fail; distance from the targets produces a diagnostic score,
+and median absolute deviation produces a separate view-stability confidence value.
 
 ### Reusable components and scoped symmetry
 
