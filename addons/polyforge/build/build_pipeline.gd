@@ -11,6 +11,8 @@ const TopologyBudget := preload("res://addons/polyforge/core/topology_budget.gd"
 const RigValidation := preload("res://addons/polyforge/quality/rig_validation.gd")
 const ProcessValidation := preload("res://addons/polyforge/quality/process_validation.gd")
 const ReferenceValidation := preload("res://addons/polyforge/quality/reference_validation.gd")
+const CohesionValidation := preload("res://addons/polyforge/quality/cohesion_validation.gd")
+const MassHierarchyValidation := preload("res://addons/polyforge/quality/mass_hierarchy_validation.gd")
 const VisualEvidence := preload("res://addons/polyforge/quality/visual_evidence.gd")
 const GLTFExport := preload("res://addons/polyforge/exporters/gltf_export.gd")
 const ManifestExport := preload("res://addons/polyforge/exporters/manifest_export.gd")
@@ -124,8 +126,17 @@ static func validate(spec: Dictionary) -> Dictionary:
 	var reference_validation := ReferenceValidation.evaluate(spec)
 	for failure in reference_validation.failures:
 		failures.append("reference: " + str(failure))
+	for warning in reference_validation.get("warnings", PackedStringArray()):
+		warnings.append("reference: " + str(warning))
 	for measurement in reference_validation.measurements:
 		measurements.append({"type": "reference", "result": measurement})
+	var cohesion_validation := CohesionValidation.evaluate(spec)
+	for failure in cohesion_validation.failures:
+		failures.append("cohesion: " + str(failure))
+	for warning in cohesion_validation.warnings:
+		warnings.append("cohesion: " + str(warning))
+	for measurement in cohesion_validation.measurements:
+		measurements.append({"type": "cohesion", "result": measurement})
 	var bounds := _bounds(spec.assembly.parts)
 	var anchor_slack := maxf(bounds.size.x, maxf(bounds.size.y, bounds.size.z)) * 0.25
 	for anchor_name in spec.anchors:
@@ -147,6 +158,7 @@ static func validate(spec: Dictionary) -> Dictionary:
 		"rig": rig_validation,
 		"process": process_validation,
 		"reference": reference_validation,
+		"cohesion": cohesion_validation,
 		"triangles": triangles,
 	}
 
@@ -299,8 +311,19 @@ static func run(tree: SceneTree, spec: Dictionary, supplied_options := {}) -> Di
 	else:
 		validation.readability = {"available": false, "enabled": false,
 			"policy": readability_policy}
+	var hierarchy := {"ok": true, "available": false, "skipped": true,
+		"failures": PackedStringArray(), "warnings": PackedStringArray(),
+		"measurements": [], "score": 1.0}
+	if bool(options.measure_readability) and bool(readability_policy.enabled):
+		hierarchy = MassHierarchyValidation.evaluate(validation.readability,
+			spec.get("contracts", {}).get("cohesion_contract", {}))
+	validation.cohesion["mass_hierarchy"] = hierarchy
+	for failure in hierarchy.failures:
+		validation.failures.append("cohesion: " + str(failure))
+	for warning in hierarchy.warnings:
+		validation.warnings.append("cohesion: " + str(warning))
 	validation.visual_evidence = VisualEvidence.compile(
-		validation.get("reference", {}), validation.readability)
+		validation.get("reference", {}), validation.readability, validation.cohesion)
 	validation.ok = validation.failures.is_empty()
 	result.ok = validation.ok
 	if not validation.ok and not bool(options.force):

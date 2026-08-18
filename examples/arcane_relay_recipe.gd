@@ -10,6 +10,8 @@ const Checks := preload("res://addons/polyforge/quality/checks.gd")
 const CanonicalArtifact := preload("res://addons/polyforge/core/canonical_artifact.gd")
 const AssetIntent := preload("res://addons/polyforge/core/asset_intent.gd")
 const ResolvedDesign := preload("res://addons/polyforge/core/resolved_design.gd")
+const DesignBrief := preload("res://addons/polyforge/core/design_brief.gd")
+const CohesionContract := preload("res://addons/polyforge/core/cohesion_contract.gd")
 const AppearanceStyleBinding := preload("res://addons/polyforge/core/appearance_style_binding.gd")
 const AssemblyPlan := preload("res://addons/polyforge/core/assembly_plan.gd")
 const SolvedAssembly := preload("res://addons/polyforge/core/solved_assembly.gd")
@@ -17,6 +19,8 @@ const ComponentCatalog := preload("res://addons/polyforge/core/component_catalog
 const RigidAssemblySolver := preload("res://addons/polyforge/core/rigid_assembly_solver.gd")
 const GeometryFingerprint := preload("res://addons/polyforge/core/geometry_fingerprint.gd")
 const AssemblyCompiler := preload("res://addons/polyforge/build/assembly_compiler.gd")
+const InterfacePlan := preload("res://addons/polyforge/core/interface_plan.gd")
+const RigidInterfaceCompiler := preload("res://addons/polyforge/build/rigid_interface_compiler.gd")
 const StageRunner := preload("res://addons/polyforge/build/stage_runner.gd")
 const StyleCompiler := preload("res://addons/polyforge/build/style_compiler.gd")
 const PlanPatch := preload("res://addons/polyforge/core/plan_patch.gd")
@@ -172,13 +176,45 @@ func build(p) -> Dictionary:
 			"foundation_sides": 8, "paired_supports": true},
 		"parameters": {"size": size, "span_ratio": span_ratio},
 	}, {"palette_family": "weathered brass and amethyst", "slots": appearance_slots})
+	var brief := DesignBrief.new(intent.content_hash(), {
+		"archetype": "arcane industrial relay",
+		"functional_read": "a grounded frame contains and routes energy through one core",
+	}, [
+		{"id": "primary_structure", "tier": "primary"},
+		{"id": "secondary_core", "tier": "secondary"},
+		{"id": "tertiary_interfaces", "tier": "tertiary"},
+	], ["contained energized core", "load-bearing portal frame"],
+		["chunky octagonal massing", "repeated beveled junction bands",
+			"restrained amethyst energy accents"], {
+			"required": ["archetype", "signature_features"],
+			"preferred": ["approximate proportions", "composition"],
+			"informational": ["exact placement", "incidental ornament"],
+		})
 	var resolved := ResolvedDesign.new(intent.construction_hash(), {
 		"units": "meters", "front": "+Z", "size": size, "span": span,
 		"base_height": base_height, "column_height": column_height,
 		"solver": {"id": "polyforge.rigid.socket_assembly", "version": "1.0.0"},
 	})
+	var cohesion := CohesionContract.new(brief.content_hash(),
+		["foundation", "left_column", "right_column", "lintel", "core"],
+		["mount_left", "mount_right", "bridge_left", "bridge_right", "mount_core"],
+		{"profile_id": "relay.beveled_band.v1", "allowed_families": [
+			"rigid.box_collar", "rigid.cylinder_collar"]}, [
+			{"id": "primary_structure", "tier": "primary",
+				"minimum_share": 0.62, "target_share": 0.74, "maximum_share": 0.90},
+			{"id": "secondary_core", "tier": "secondary",
+				"minimum_share": 0.07, "target_share": 0.17, "maximum_share": 0.28},
+			{"id": "tertiary_interfaces", "tier": "tertiary",
+				"minimum_share": 0.02, "target_share": 0.09, "maximum_share": 0.16},
+		], [
+			{"higher": "primary_structure", "lower": "secondary_core",
+				"minimum_ratio": 2.4, "target_ratio": 4.0},
+			{"higher": "secondary_core", "lower": "tertiary_interfaces",
+				"minimum_ratio": 1.05, "target_ratio": 1.6},
+		], true)
 	var binding := AppearanceStyleBinding.new(intent.appearance_hash(), appearance_slots)
-	assert(intent.validate().is_empty() and resolved.validate().is_empty() and
+	assert(intent.validate().is_empty() and brief.validate().is_empty() and
+		cohesion.validate().is_empty() and resolved.validate().is_empty() and
 		binding.validate().is_empty(), "relay intent contracts must validate")
 	var materials := {"stone": StyleCompiler.slot("body.stone"),
 		"trim": StyleCompiler.slot("trim.gold"),
@@ -245,16 +281,51 @@ func build(p) -> Dictionary:
 		solution.instances, solution.transforms, solution.connections,
 		solution.residuals, solution.clearance, solver.descriptor())
 	assert(solved.validate().is_empty(), "relay solved assembly must validate")
-	var compiled := AssemblyCompiler.compile(catalog, solved)
-	assert(compiled.ok, "; ".join(compiled.failures))
-	var asset = compiled.assembly
-	var geometry_hash := GeometryFingerprint.assembly_hash(asset)
+	var profile_id := "relay.beveled_band.v1"
+	var interface_plan := InterfacePlan.new(solved.content_hash(), cohesion.content_hash(), [
+		{"connection_id": "mount_left", "family": "rigid.box_collar",
+			"profile_id": profile_id, "material_slot": "trim.gold",
+			"size": Vector3(size * 0.19, size * 0.12, size * 0.16),
+			"offset": Vector3(0.0, size * 0.03, 0.0),
+			"minimum_endpoint_overlap": 0.18},
+		{"connection_id": "mount_right", "family": "rigid.box_collar",
+			"profile_id": profile_id, "material_slot": "trim.gold",
+			"size": Vector3(size * 0.19, size * 0.12, size * 0.16),
+			"offset": Vector3(0.0, size * 0.03, 0.0),
+			"minimum_endpoint_overlap": 0.18},
+		{"connection_id": "bridge_left", "family": "rigid.box_collar",
+			"profile_id": profile_id, "material_slot": "trim.gold",
+			"size": Vector3(size * 0.20, size * 0.09, size * 0.17),
+			"offset": Vector3(0.0, size * 0.018, 0.0),
+			"minimum_endpoint_overlap": 0.10},
+		{"connection_id": "bridge_right", "family": "rigid.box_collar",
+			"profile_id": profile_id, "material_slot": "trim.gold",
+			"size": Vector3(size * 0.20, size * 0.09, size * 0.17),
+			"offset": Vector3(0.0, size * 0.018, 0.0),
+			"minimum_endpoint_overlap": 0.10},
+		{"connection_id": "mount_core", "family": "rigid.cylinder_collar",
+			"profile_id": profile_id, "material_slot": "trim.gold",
+			"radius": size * 0.17, "height": size * 0.12, "segments": segments,
+			"offset": Vector3(0.0, size * 0.03, 0.0),
+			"minimum_endpoint_overlap": 0.18},
+	])
+	assert(interface_plan.validate().is_empty(), "relay interface plan must validate")
+	var base_compilation := AssemblyCompiler.compile(catalog, solved)
+	assert(base_compilation.ok, "; ".join(base_compilation.failures))
+	var base_geometry_hash := GeometryFingerprint.assembly_hash(base_compilation.assembly)
+	var interface_compilation := RigidInterfaceCompiler.compile(catalog, solved, interface_plan)
+	assert(interface_compilation.ok, "; ".join(interface_compilation.failures))
+	var asset = interface_compilation.assembly
+	var geometry_hash: String = interface_compilation.output_geometry_hash
 	var style_compilation := StyleCompiler.apply(asset, binding)
 	assert(style_compilation.ok, "; ".join(style_compilation.failures))
-	var stages := StageRunner.new("arcane_relay.bounded_repair_v1")
+	var stages := StageRunner.new("arcane_relay.cohesion_first_v1")
 	stages.record("intent", "arcane_relay.intent.v1", {}, intent)
+	stages.record("resolve_brief", "arcane_relay.design_brief.v1",
+		{"asset_intent": intent.content_hash()}, brief)
 	stages.record("resolve_design", "arcane_relay.resolver.v1",
-		{"construction_intent": intent.construction_hash()}, resolved)
+		{"construction_intent": intent.construction_hash(),
+			"design_brief": brief.content_hash()}, resolved)
 	stages.record("propose_candidates", "polyforge.assembly_candidate_generator@1.0.0",
 		{"resolved_design": resolved.content_hash(), "catalog": catalog.content_hash()},
 		candidates.artifact)
@@ -266,9 +337,16 @@ func build(p) -> Dictionary:
 		{"candidate_selection": selection.artifact.content_hash()}, plan)
 	stages.record("solve_rigid", "polyforge.rigid.socket_assembly@1.0.0",
 		{"assembly_plan": plan.content_hash()}, solved, solve_result.diagnostics)
+	stages.record("plan_interfaces", "polyforge.rigid_interface_planner@1.0.0",
+		{"solved_assembly": solved.content_hash(),
+			"cohesion_contract": cohesion.content_hash()}, interface_plan)
 	stages.record("compile_geometry", "polyforge.solved_assembly_compiler.v1",
-		{"solved_assembly": solved.content_hash()}, {"geometry_hash": geometry_hash,
-			"parts": asset.parts.size()})
+		{"solved_assembly": solved.content_hash()}, {"geometry_hash": base_geometry_hash,
+			"parts": base_compilation.assembly.parts.size()})
+	stages.record("compile_interfaces", "polyforge.rigid_interface_compiler@1.0.0",
+		{"solved_assembly": solved.content_hash(),
+			"interface_plan": interface_plan.content_hash(),
+			"base_geometry": base_geometry_hash}, interface_compilation.artifact)
 	stages.record("compile_appearance", "polyforge.style_slots.v1",
 		{"appearance_intent": intent.appearance_hash(), "geometry": geometry_hash},
 		style_compilation)
@@ -283,13 +361,17 @@ func build(p) -> Dictionary:
 		"require_part_classification": true,
 		"contracts": {
 			"asset_intent": intent.to_canonical_dict(),
+			"design_brief": brief.to_canonical_dict(),
 			"resolved_design": resolved.to_canonical_dict(),
+			"cohesion_contract": cohesion.to_canonical_dict(),
 			"component_catalog": catalog.snapshot(),
 			"candidate_set": candidates.artifact.to_canonical_dict(),
 			"candidate_repair_report": repair_result.artifact.to_canonical_dict(),
 			"candidate_selection": selection.artifact.to_canonical_dict(),
 			"assembly_plan": plan.to_canonical_dict(),
 			"solved_assembly": solved.to_canonical_dict(),
+			"interface_plan": interface_plan.to_canonical_dict(),
+			"interface_compilation": interface_compilation.artifact.to_canonical_dict(),
 			"appearance_binding": binding.to_canonical_dict(),
 		},
 		"process": stages.snapshot(),
@@ -308,15 +390,17 @@ func build(p) -> Dictionary:
 			"view_set": "octants", "minimum_regions": 3, "minimum_contrast": 0.04,
 			"minimum_stroke_px": 1.0, "required": true,
 			"critical_parts": {
-				"foundation": {"members": asset.part_names_for_instance("foundation"),
+				"primary_structure": {"members":
+					asset.part_names_for_instance("foundation") +
+					asset.part_names_for_instance("left_column") +
+					asset.part_names_for_instance("right_column") +
+					asset.part_names_for_instance("lintel"),
 					"minimum_visible_fraction": 0.20},
-				"supports": {"members": asset.part_names_for_instance("left_column") +
-					asset.part_names_for_instance("right_column"),
-					"minimum_visible_fraction": 0.12},
-				"lintel": {"members": asset.part_names_for_instance("lintel"),
-					"minimum_visible_fraction": 0.18},
-				"core": {"members": asset.part_names_for_instance("core"),
-					"minimum_visible_fraction": 0.10},
+				"secondary_core": {"members": asset.part_names_for_instance("core"),
+					"minimum_visible_fraction": 0.08},
+				"tertiary_interfaces": {"members":
+					asset.part_names_for_instance("interfaces"),
+					"minimum_visible_fraction": 0.02},
 			}},
 		"front": "+Z",
 		"metadata": {"description": "Typed-socket relay selected through bounded plan repair",

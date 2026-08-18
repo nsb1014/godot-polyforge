@@ -93,12 +93,21 @@ Godot before the build succeeds.
   kinds, bound attempts, retain complete history, and rebuild downstream artifacts.
 - Never accept solver status as authority. Recompute hard constraints independently, select a plan,
   then perform the authoritative solve again before geometry compilation.
+- Freeze semantic identity and mass roles in `DesignBrief`; keep them independent of exact image
+  coordinates. Put structural backbone, repeated junction grammar, and asset-specific mass-share
+  bands in `CohesionContract`.
+- Add rigid transition geometry only through an `InterfacePlan` bound to the solved-assembly hash.
+  Interface compilation may add collars, sleeves, or brackets, but must not move components.
+- Measure endpoint overlap from emitted interface geometry. Point contact is not visual attachment.
+- Score mass hierarchy from the median normalized projected area across declared semantic views.
+  Recipes own share bands and dominance ratios; do not install one universal aesthetic threshold.
 - Pin rigid motion in `MotionContract` and bind the compiled rig to the exact geometry and contract
   hashes it consumed.
 - Record stage input/output hashes with `StageRunner`. The runner owns ordering and provenance,
   never geometry, style, solver, rig, repair, or validation logic.
-- When a reference image exists, identify it by SHA-256 and encode required semantic groups,
-  landmarks, proportions, and appearance slots in `ReferenceProfile`.
+- When a reference image exists, identify it by SHA-256 and classify each observation as required,
+  preferred, or informational in `ReferenceProfile`. Only required identity may fail the build;
+  preferred coordinate and proportion drift remains evidence.
 - Compare normalized semantic evidence across renderers, not pixels. Keep beauty baselines scoped
   to one pinned Godot/renderer environment.
 - Declare intentional intersections with `Assembly.allow_overlap()` before enabling
@@ -122,6 +131,10 @@ Godot before the build succeeds.
   planning, solving, and geometry ownership for modular rigid assets.
 - `core/plan_patch.gd`, `build/candidate_repair_stage.gd`, and `build/candidate_selector.gd`:
   explicit bounded repair, independent hard gates, and deterministic valid-only ranking.
+- `core/design_brief.gd`, `core/cohesion_contract.gd`, and `core/interface_plan.gd`: semantic
+  hierarchy, assembly cohesion, and connection-local geometry ownership.
+- `build/rigid_interface_compiler.gd`, `quality/cohesion_validation.gd`, and
+  `quality/mass_hierarchy_validation.gd`: post-solve transitions and deterministic cohesion gates.
 - `build/stage_runner.gd` and `build/style_compiler.gd`: isolated stages and enforced style boundary.
 - `quality/reference_validation.gd` and `quality/visual_evidence.gd`: reference and renderer evidence.
 - `core/attachments.gd`: sampled surface frames, child bindings, and attachment drift checks.

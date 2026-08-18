@@ -82,8 +82,9 @@ jobs:
           manifest = json.loads((root / "arcane_relay.manifest.json").read_text())
           assert manifest["format_version"] == 8
           assert [stage["stage_id"] for stage in manifest["process"]["stages"]] == [
-              "intent", "resolve_design", "propose_candidates", "repair_candidates",
-              "select_candidate", "plan_assembly", "solve_rigid", "compile_geometry",
+              "intent", "resolve_brief", "resolve_design", "propose_candidates",
+              "repair_candidates", "select_candidate", "plan_assembly", "solve_rigid",
+              "plan_interfaces", "compile_geometry", "compile_interfaces",
               "compile_appearance"]
           contracts = manifest["contracts"]
           candidates = contracts["candidate_repair_report"]["payload"]["candidates"]
@@ -94,10 +95,20 @@ jobs:
               "selected_candidate_id"] == "baseline"
           plan = contracts["assembly_plan"]
           solved = contracts["solved_assembly"]
+          interface_plan = contracts["interface_plan"]
+          interface_compilation = contracts["interface_compilation"]
           assert solved["artifact_type"] == "solved_assembly"
           assert solved["payload"]["solver"]["id"] == "polyforge.rigid.socket_assembly"
           assert len(plan["payload"]["connections"]) == 5
           assert all(item["ok"] for item in solved["payload"]["residuals"])
+          assert interface_plan["payload"]["solved_assembly_hash"]
+          assert len(interface_plan["payload"]["treatments"]) == 5
+          assert len(interface_compilation["payload"]["connections"]) == 5
+          assert all(item["a_overlap"] >= item["minimum_endpoint_overlap"] and
+                     item["b_overlap"] >= item["minimum_endpoint_overlap"]
+                     for item in interface_compilation["payload"]["connections"])
+          assert interface_compilation["payload"]["base_geometry_hash"] != \
+              interface_compilation["payload"]["output_geometry_hash"]
           assert manifest["socket_contracts"]
           assert manifest["style_compilation"]["geometry_hash_before"] == \
               manifest["style_compilation"]["geometry_hash_after"]
@@ -105,6 +116,11 @@ jobs:
           assert topology["rendered_triangles"] <= 3200
           assert topology["unique_triangles"] <= 2600
           assert manifest["visual_evidence"]["semantic_render_ok"]
+          assert manifest["cohesion_evidence"]["ok"]
+          assert manifest["cohesion_evidence"]["mass_hierarchy"]["ok"]
+          assert manifest["cohesion_evidence"]["mass_hierarchy"]["score"] > 0.0
+          assert 0.0 < manifest["cohesion_evidence"]["mass_hierarchy"][
+              "confidence"] <= 1.0
           assert not manifest["visual_evidence"]["renderer_policy"][
               "cross_renderer_pixel_comparison"]
           for name in ("arcane_relay.glb", "arcane_relay_viewer.json",

@@ -43,17 +43,34 @@ static func _vector3(value, fallback := Vector3.ZERO) -> Vector3:
 		return Vector3(float(value[0]), float(value[1]), float(value[2]))
 	return fallback
 
+static func _policy(profile: Dictionary, category: String, rule := {}) -> String:
+	if rule is Dictionary and rule.has("policy"):
+		return str(rule.policy)
+	var defaults := {"semantic_groups": "required", "anchors": "preferred",
+		"appearance_slots": "informational", "proportions": "preferred"}
+	return str(profile.get("policies", {}).get(category, defaults[category]))
+
+static func _report_mismatch(policy: String, message: String,
+		failures: PackedStringArray, warnings: PackedStringArray) -> void:
+	if policy == "required":
+		failures.append(message)
+	elif policy == "preferred":
+		warnings.append(message)
+
 static func evaluate(spec: Dictionary) -> Dictionary:
 	var failures := PackedStringArray()
+	var warnings := PackedStringArray()
 	var measurements := []
 	var record: Dictionary = spec.get("reference_profile", {})
 	if record.is_empty():
 		return {"ok": true, "available": false, "failures": failures,
-			"measurements": measurements}
+			"warnings": warnings, "measurements": measurements,
+			"preference_score": 1.0}
 	var profile: Dictionary = record.get("payload", record)
 	var parts: Array = spec.assembly.parts
 	for group_name in profile.get("semantic_groups", {}):
 		var rule: Dictionary = profile.semantic_groups[group_name]
+		var policy := _policy(profile, "semantic_groups", rule)
 		var count := 0
 		for part in parts:
 			if _matches(part, rule.get("selector", {})):
@@ -61,15 +78,20 @@ static func evaluate(spec: Dictionary) -> Dictionary:
 		var minimum := int(rule.get("minimum", 1))
 		var ok := count >= minimum
 		measurements.append({"type": "semantic_group", "name": group_name,
-			"count": count, "minimum": minimum, "ok": ok})
+			"count": count, "minimum": minimum, "policy": policy, "ok": ok})
 		if not ok:
-			failures.append("REFERENCE_MISSING_GROUP: %s measured %d required %d" % [
-				group_name, count, minimum])
+			_report_mismatch(policy,
+				"REFERENCE_MISSING_GROUP: %s measured %d required %d" % [
+					group_name, count, minimum], failures, warnings)
 	var bounds := _bounds(parts)
 	for anchor_name in profile.get("anchors", {}):
 		var rule: Dictionary = profile.anchors[anchor_name]
+		var policy := _policy(profile, "anchors", rule)
 		if not spec.anchors.has(anchor_name) or not spec.anchors[anchor_name] is Vector3:
-			failures.append("REFERENCE_MISSING_ANCHOR: %s" % anchor_name)
+			measurements.append({"type": "anchor", "name": anchor_name,
+				"policy": policy, "ok": false})
+			_report_mismatch(policy, "REFERENCE_MISSING_ANCHOR: %s" % anchor_name,
+				failures, warnings)
 			continue
 		var normalized := _normalized(spec.anchors[anchor_name], bounds)
 		var minimum := _vector3(rule.get("minimum", Vector3.ZERO), Vector3.ZERO)
@@ -79,17 +101,22 @@ static func evaluate(spec: Dictionary) -> Dictionary:
 			normalized.y <= maximum.y and normalized.z <= maximum.z
 		measurements.append({"type": "anchor", "name": anchor_name,
 			"normalized": normalized, "minimum": minimum, "maximum": maximum,
-			"ok": ok})
+			"policy": policy, "ok": ok})
 		if not ok:
-			failures.append("REFERENCE_ANCHOR_OUT_OF_RANGE: %s" % anchor_name)
+			_report_mismatch(policy, "REFERENCE_ANCHOR_OUT_OF_RANGE: %s" % anchor_name,
+				failures, warnings)
 	var binding: Dictionary = spec.get("contracts", {}).get("appearance_binding", {})
 	var slots: Dictionary = binding.get("payload", {}).get("slots", {})
 	for slot_id in profile.get("required_appearance_slots", []):
+		var policy := _policy(profile, "appearance_slots")
 		var ok := slots.has(str(slot_id))
-		measurements.append({"type": "appearance_slot", "name": slot_id, "ok": ok})
+		measurements.append({"type": "appearance_slot", "name": slot_id,
+			"policy": policy, "ok": ok})
 		if not ok:
-			failures.append("REFERENCE_MISSING_APPEARANCE_SLOT: %s" % slot_id)
+			_report_mismatch(policy, "REFERENCE_MISSING_APPEARANCE_SLOT: %s" % slot_id,
+				failures, warnings)
 	for rule in profile.get("proportions", []):
+		var policy := _policy(profile, "proportions", rule)
 		var numerator := int(rule.get("numerator_axis", 1))
 		var denominator := int(rule.get("denominator_axis", 0))
 		var axes := [bounds.size.x, bounds.size.y, bounds.size.z]
@@ -98,9 +125,19 @@ static func evaluate(spec: Dictionary) -> Dictionary:
 			ratio <= float(rule.get("maximum", INF))
 		measurements.append({"type": "proportion", "name": rule.get("name", "ratio"),
 			"ratio": ratio, "minimum": rule.get("minimum", 0.0),
-			"maximum": rule.get("maximum", INF), "ok": ok})
+			"maximum": rule.get("maximum", INF), "policy": policy, "ok": ok})
 		if not ok:
-			failures.append("REFERENCE_PROPORTION_OUT_OF_RANGE: %s" % rule.get("name", "ratio"))
+			_report_mismatch(policy, "REFERENCE_PROPORTION_OUT_OF_RANGE: %s" %
+				rule.get("name", "ratio"), failures, warnings)
+	var preference_total := 0
+	var preference_passed := 0
+	for measurement in measurements:
+		if str(measurement.get("policy", "")) == "preferred":
+			preference_total += 1
+			if bool(measurement.get("ok", false)):
+				preference_passed += 1
 	return {"ok": failures.is_empty(), "available": true,
 		"reference_image": profile.get("image", {}), "failures": failures,
-		"measurements": measurements}
+		"warnings": warnings, "measurements": measurements,
+		"preference_score": snappedf(float(preference_passed) /
+			maxf(float(preference_total), 1.0), 0.001)}
