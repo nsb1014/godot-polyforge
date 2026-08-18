@@ -26,6 +26,8 @@ func build(p) -> Dictionary:
 		"category": "prop",
 		"assembly": asset,
 		"triangle_budget": 4000,
+		"topology_budget": {"rendered_triangles": 4000, "unique_triangles": 3000},
+		"quality_profile": "runtime",
 		"checks": [],
 		"anchors": {},
 		"front": "+Z",
@@ -66,10 +68,32 @@ Godot before the build succeeds.
 - Use `--mode preserve` for movable/addressable parts, `merge` for static batching, or
   `both` when authoring and runtime needs differ.
 - Add structural and semantic checks before increasing detail.
+- Classify new parts across construction, role, repetition, and motion with
+  `SurfaceTypes.classify()`; set `require_part_classification` for strict recipes.
+- Choose rounded and swept segmentation through `TopologyBudget` at the intended play size.
+  Report both rendered and unique triangle budgets; repeated components count toward rendered
+  cost while sharing unique mesh storage.
+- For moving assets, return a `Rig` with named bones, bindings, looped clips, and motion reports.
+  Bake mechanical motion from constraints and validate fixed lengths, loop closure, and static
+  keepout clearance across the complete sample set.
+- For new production recipes, use `AssetIntent` with separately hashed construction and appearance
+  payloads. Resolve only construction intent into `ResolvedDesign`.
+- Compile geometry with stable `StyleCompiler.slot()` materials, fingerprint it, and apply an
+  `AppearanceStyleBinding` afterward. Treat any geometry-hash change as a build failure.
+- Route a mechanism through a specialized `SolverStage`; never silently discard an unsupported
+  constraint or substitute a generic mathematical solver.
+- Pin rigid motion in `MotionContract` and bind the compiled rig to the exact geometry and contract
+  hashes it consumed.
+- Record stage input/output hashes with `StageRunner`. The runner owns ordering and provenance,
+  never geometry, style, solver, rig, repair, or validation logic.
+- When a reference image exists, identify it by SHA-256 and encode required semantic groups,
+  landmarks, proportions, and appearance slots in `ReferenceProfile`.
+- Compare normalized semantic evidence across renderers, not pixels. Keep beauty baselines scoped
+  to one pinned Godot/renderer environment.
 - Declare intentional intersections with `Assembly.allow_overlap()` before enabling
   `noclip` in the recipe.
 - Keep palettes, categories, density profiles, and output directories project-owned.
-- Inspect all four views. A correct canonical view does not prove the back and sides exist.
+- Inspect all eight octant views. A correct canonical view does not prove the back and sides exist.
 - Do not generate procedural geometry at game startup. Import the compiled GLB.
 
 ## Useful modules
@@ -77,6 +101,13 @@ Godot before the build succeeds.
 - `core/stock.gd`: named-recipe-friendly Godot primitive factories.
 - `core/mesh.gd`: lathes, extrusions, sweeps, heightfields, painting, and tagged surfaces.
 - `core/assembly.gd`: names, frames, transforms, overlap declarations, and merging.
+- `core/topology_budget.gd`: adaptive segment selection and rendered/unique triangle policies.
+- `core/rig.gd` and `core/animation.gd`: skeleton, skin binding, and clip authoring data.
+- `core/mechanical_constraints.gd`: four-bar sampling and motion-clearance validation.
+- `core/canonical_artifact.gd` and `core/asset_intent.gd`: typed canonical IR and split hashes.
+- `core/solver_stage.gd` and `core/four_bar_solver.gd`: shared invocation contract, specialized math.
+- `build/stage_runner.gd` and `build/style_compiler.gd`: isolated stages and enforced style boundary.
+- `quality/reference_validation.gd` and `quality/visual_evidence.gd`: reference and renderer evidence.
 - `core/attachments.gd`: sampled surface frames, child bindings, and attachment drift checks.
 - `quality/lint_core.gd`: structural geometry validation and budgets.
 - `quality/checks.gd`: named-part relationships and intersection checks.

@@ -89,13 +89,13 @@
 </style>
 
 <header>
-  <h1 id="mtitle">WAM Viewer</h1>
+  <h1 id="mtitle">PolyForge Viewer</h1>
   <span class="sub" id="msub">drag to orbit — drop a PolyForge <code>*_viewer.json</code> anywhere to load it</span>
 </header>
 <main>
   <div id="stage"><canvas id="cv"></canvas>
       <div id="dropHint">Drop a PolyForge <b>&nbsp;*_viewer.json&nbsp;</b> here<br>
-      (produced by <code>&nbsp;python3 -m wam.cli model.wam&nbsp;</code>)</div>
+      (produced by the PolyForge Godot build pipeline)</div>
     </div>
   <aside>
     <div class="group">
@@ -121,7 +121,7 @@
       <h2>Stats</h2>
       <div class="stats" id="stats"></div>
     </div>
-    <p class="hint">Authored in WAM, a text language for LLM-writable models: the mesh, rig, and animations compile from ~130 lines of source.</p>
+    <p class="hint">Godot-native mesh, skeleton, and animation data compiled offline by PolyForge.</p>
   </aside>
 </main>
 
@@ -240,7 +240,7 @@ gl.disable(gl.CULL_FACE);
 
 // ---- model state ----
 let M = null;          // everything derived from a loaded model
-let curAnim=null, animClock=0;
+let curAnim=null, animClock=0, animPlaying=true;
 let yaw=0.55, pitch=0.16, zoomf=1.0;
 const FOV=Math.PI*28/180;
 
@@ -293,7 +293,7 @@ function loadModel(DATA){
     spos: new Float32Array(NB*6),
     texReady: 0,
   };
-  curAnim = null; animClock = 0; zoomf = 1.0;
+  curAnim = null; animClock = 0; animPlaying=true; zoomf = 1.0;
 
   if(DATA.tex){
     const im=new Image();
@@ -334,7 +334,7 @@ function loadModel(DATA){
     const b=document.createElement('button');
     b.textContent=label;
     b.onclick=()=>{
-      curAnim=anim; animClock=0;
+      curAnim=anim; animClock=0; animPlaying=true;
       [...animBtns.children].forEach(x=>x.classList.toggle('on',x===b));
     };
     animBtns.appendChild(b);
@@ -342,6 +342,14 @@ function loadModel(DATA){
   }
   mkBtn('Rest',null).classList.add('on');
   (DATA.anims||[]).forEach(a=>mkBtn(a.name[0].toUpperCase()+a.name.slice(1),a));
+  const pause=document.createElement('button');
+  pause.textContent='Pause';
+  pause.onclick=()=>{animPlaying=!animPlaying; pause.textContent=animPlaying?'Pause':'Play';};
+  animBtns.appendChild(pause);
+  const reset=document.createElement('button');
+  reset.textContent='Reset';
+  reset.onclick=()=>{animClock=0;};
+  animBtns.appendChild(reset);
   const sw=document.getElementById('swatches');
   sw.innerHTML='';
   DATA.mats.forEach(mt=>{
@@ -358,13 +366,14 @@ function loadModel(DATA){
 }
 
 // ---- bones + skinning ----
-function composeBones(rotFn){
+function composeBones(poseFn){
   const {DATA, NB, G} = M;
   for(let i=0;i<NB;i++){
-    const b=DATA.bones[i], R=quatMat(rotFn(i)), h=b.h;
-    const tx=h[0]-(R[0]*h[0]+R[1]*h[1]+R[2]*h[2]);
-    const ty=h[1]-(R[3]*h[0]+R[4]*h[1]+R[5]*h[2]);
-    const tz=h[2]-(R[6]*h[0]+R[7]*h[1]+R[8]*h[2]);
+    const b=DATA.bones[i], pose=poseFn(i), R=quatMat(pose.r||IDENT), h=b.h;
+    const d=pose.p||[0,0,0];
+    const tx=h[0]+d[0]-(R[0]*h[0]+R[1]*h[1]+R[2]*h[2]);
+    const ty=h[1]+d[1]-(R[3]*h[0]+R[4]*h[1]+R[5]*h[2]);
+    const tz=h[2]+d[2]-(R[6]*h[0]+R[7]*h[1]+R[8]*h[2]);
     const o=i*12;
     if(b.p<0){
       G[o]=R[0];G[o+1]=R[1];G[o+2]=R[2];G[o+3]=tx;
@@ -400,13 +409,23 @@ function skinVerts(){
     posed[v*3]=px; posed[v*3+1]=py; posed[v*3+2]=pz;
   }
 }
-function animQuat(anim, phase, bi){
+function animPose(anim, time, bi){
   const tr=anim.tracks[bi];
-  if(!tr) return IDENT;
+  if(!tr || !tr.length) return {r:IDENT,p:[0,0,0]};
+  if(Array.isArray(tr[0])){
+    const S=tr.length-1, phase=time/Math.max(anim.dur||1,1e-6);
+    const f=Math.min(phase,0.99999)*S, i0=Math.floor(f), t=f-i0;
+    return {r:slerp(tr[i0],tr[Math.min(i0+1,S)],t),p:[0,0,0]};
+  }
+  if(time<=tr[0].t) return {r:tr[0].r,p:tr[0].p||[0,0,0]};
   const S=tr.length-1;
-  const f=Math.min(phase,0.99999)*S;
-  const i0=Math.floor(f), t=f-i0;
-  return slerp(tr[i0], tr[Math.min(i0+1,S)], t);
+  for(let i=1;i<=S;i++) if(time<=tr[i].t){
+    const span=Math.max(tr[i].t-tr[i-1].t,1e-6), t=(time-tr[i-1].t)/span;
+    const a=tr[i-1].p||[0,0,0], b=tr[i].p||[0,0,0];
+    return {r:slerp(tr[i-1].r,tr[i].r,t),
+            p:[a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t]};
+  }
+  return {r:tr[S].r,p:tr[S].p||[0,0,0]};
 }
 
 // ---- camera / draw ----
@@ -567,14 +586,14 @@ function frame(now){
   const dt=Math.min(0.1,(now-last)/1000); last=now;
   if(spinBox.checked) yaw+=dt*0.5;
   if(M){
-    let rotFn;
+    let poseFn;
     if(curAnim){
-      animClock+=dt/curAnim.dur;
-      if(curAnim.loop) animClock%=1; else animClock=Math.min(animClock,1);
-      const ph=animClock;
-      rotFn=(i)=>animQuat(curAnim,ph,i);
-    } else rotFn=()=>IDENT;
-    composeBones(rotFn);
+      const duration=Math.max(curAnim.dur||1,1e-6);
+      if(animPlaying) animClock+=dt;
+      if(curAnim.loop) animClock%=duration; else animClock=Math.min(animClock,duration);
+      poseFn=(i)=>animPose(curAnim,animClock,i);
+    } else poseFn=()=>({r:IDENT,p:[0,0,0]});
+    composeBones(poseFn);
     skinVerts();
   }
   draw();

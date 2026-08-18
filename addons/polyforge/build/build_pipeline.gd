@@ -7,6 +7,11 @@ const Readability := preload("res://addons/polyforge/quality/readability.gd")
 const Attachments := preload("res://addons/polyforge/core/attachments.gd")
 const SurfaceValidation := preload("res://addons/polyforge/quality/surface_validation.gd")
 const Symmetry := preload("res://addons/polyforge/quality/symmetry.gd")
+const TopologyBudget := preload("res://addons/polyforge/core/topology_budget.gd")
+const RigValidation := preload("res://addons/polyforge/quality/rig_validation.gd")
+const ProcessValidation := preload("res://addons/polyforge/quality/process_validation.gd")
+const ReferenceValidation := preload("res://addons/polyforge/quality/reference_validation.gd")
+const VisualEvidence := preload("res://addons/polyforge/quality/visual_evidence.gd")
 const GLTFExport := preload("res://addons/polyforge/exporters/gltf_export.gd")
 const ManifestExport := preload("res://addons/polyforge/exporters/manifest_export.gd")
 const PreviewExport := preload("res://addons/polyforge/exporters/preview_export.gd")
@@ -66,8 +71,14 @@ static func validate(spec: Dictionary) -> Dictionary:
 		for failure in part_failures:
 			failures.append("%s: %s" % [part.name, failure])
 		triangles += Lint.triangle_count(part.mesh)
-	if int(spec.triangle_budget) > 0 and triangles > int(spec.triangle_budget):
-		failures.append("triangle budget: %d triangles > %d" % [triangles, spec.triangle_budget])
+	var topology_policy: Dictionary = spec.topology_budget.duplicate(true)
+	topology_policy.quality_profile = spec.quality_profile
+	var topology := TopologyBudget.evaluate(spec.assembly.parts, topology_policy,
+		int(spec.triangle_budget))
+	for failure in topology.failures:
+		failures.append("topology: " + failure)
+	for warning in topology.warnings:
+		warnings.append("topology: " + warning)
 	if not spec.checks.is_empty():
 		var semantic := Checks.evaluate(spec.assembly.parts, spec.checks)
 		for failure in semantic.failures:
@@ -86,7 +97,7 @@ static func validate(spec: Dictionary) -> Dictionary:
 	for measurement in attachment_validation.measurements:
 		measurements.append({"type": "attachment", "result": measurement})
 	var surface_validation := SurfaceValidation.evaluate(spec.assembly.parts,
-		bool(spec.require_surface_classification))
+		bool(spec.require_surface_classification), bool(spec.require_part_classification))
 	for failure in surface_validation.failures:
 		failures.append("surface: " + failure)
 	for warning in surface_validation.warnings:
@@ -98,6 +109,23 @@ static func validate(spec: Dictionary) -> Dictionary:
 		failures.append("symmetry: " + failure)
 	for measurement in symmetry_validation.measurements:
 		measurements.append({"type": "symmetry", "result": measurement})
+	var rig_validation := RigValidation.evaluate(spec.rig, spec.assembly)
+	for failure in rig_validation.failures:
+		failures.append("rig: " + failure)
+	for warning in rig_validation.warnings:
+		warnings.append("rig: " + warning)
+	for measurement in rig_validation.measurements:
+		measurements.append({"type": "rig", "result": measurement})
+	var process_validation := {"ok": true, "failures": PackedStringArray(), "stages": 0}
+	if not spec.process.is_empty() or not spec.contracts.is_empty():
+		process_validation = ProcessValidation.evaluate(spec)
+		for failure in process_validation.failures:
+			failures.append("process: " + str(failure))
+	var reference_validation := ReferenceValidation.evaluate(spec)
+	for failure in reference_validation.failures:
+		failures.append("reference: " + str(failure))
+	for measurement in reference_validation.measurements:
+		measurements.append({"type": "reference", "result": measurement})
 	var bounds := _bounds(spec.assembly.parts)
 	var anchor_slack := maxf(bounds.size.x, maxf(bounds.size.y, bounds.size.z)) * 0.25
 	for anchor_name in spec.anchors:
@@ -115,6 +143,10 @@ static func validate(spec: Dictionary) -> Dictionary:
 		"attachments": attachment_validation,
 		"surfaces": surface_validation,
 		"symmetry": symmetry_validation,
+		"topology": topology,
+		"rig": rig_validation,
+		"process": process_validation,
+		"reference": reference_validation,
 		"triangles": triangles,
 	}
 
@@ -239,6 +271,9 @@ static func run(tree: SceneTree, spec: Dictionary, supplied_options := {}) -> Di
 		return result
 	var readability_policy := _readability_policy(spec, options)
 	if bool(options.measure_readability) and bool(readability_policy.enabled):
+		# Silhouette and semantic-visibility QA uses the assembly's authored rest
+		# transforms. Runtime skinning is validated independently by rig checks and
+		# GLB round trips; it must not perturb the reference pose used for image masks.
 		var readability_scene := GLTFExport.scene_from_parts(spec.name, spec.assembly.parts)
 		var readability := await PreviewExport.measure_readability(
 			tree, readability_scene, _bounds(spec.assembly.parts), readability_policy)
@@ -264,6 +299,8 @@ static func run(tree: SceneTree, spec: Dictionary, supplied_options := {}) -> Di
 	else:
 		validation.readability = {"available": false, "enabled": false,
 			"policy": readability_policy}
+	validation.visual_evidence = VisualEvidence.compile(
+		validation.get("reference", {}), validation.readability)
 	validation.ok = validation.failures.is_empty()
 	result.ok = validation.ok
 	if not validation.ok and not bool(options.force):
@@ -278,7 +315,8 @@ static func run(tree: SceneTree, spec: Dictionary, supplied_options := {}) -> Di
 	if bool(options.write_glb):
 		if options.mode == "preserve" or options.mode == "both":
 			var preserved_path: String = str(options.out_dir).path_join(base + ".glb")
-			var preserve_error := GLTFExport.write_preserved(spec.name, spec.assembly, preserved_path)
+			var preserve_error := GLTFExport.write_preserved(
+				spec.name, spec.assembly, preserved_path, spec.rig)
 			_record_error(result, "preserved GLB export", preserve_error)
 			if preserve_error == OK:
 				result.outputs.glb = preserved_path
@@ -302,15 +340,15 @@ static func run(tree: SceneTree, spec: Dictionary, supplied_options := {}) -> Di
 					result.validation.ok = false
 					result.export_ok = false
 	if bool(options.write_viewer):
-		merged = spec.assembly.merged_mesh()
 		var viewer_json: String = str(options.out_dir).path_join(base + "_viewer.json")
 		var viewer_html: String = str(options.out_dir).path_join(base + "_viewer.html")
-		var viewer_error := ViewerExport.write_json(merged, viewer_json, spec.name)
+		var viewer_error := ViewerExport.write_json(
+			spec.assembly, viewer_json, spec.name, spec.rig)
 		_record_error(result, "viewer JSON export", viewer_error)
 		if viewer_error == OK:
 			result.outputs.viewer_json = viewer_json
 		viewer_error = ViewerExport.write_embedded_html(
-			merged, options.viewer_template, viewer_html, spec.name)
+			spec.assembly, options.viewer_template, viewer_html, spec.name, spec.rig)
 		_record_error(result, "embedded viewer export", viewer_error)
 		if viewer_error == OK:
 			result.outputs.viewer_html = viewer_html

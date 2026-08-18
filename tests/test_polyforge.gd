@@ -13,11 +13,26 @@ const Lint := preload("res://addons/polyforge/quality/lint_core.gd")
 const Checks := preload("res://addons/polyforge/quality/checks.gd")
 const Readability := preload("res://addons/polyforge/quality/readability.gd")
 const Symmetry := preload("res://addons/polyforge/quality/symmetry.gd")
+const TopologyBudget := preload("res://addons/polyforge/core/topology_budget.gd")
+const Rig := preload("res://addons/polyforge/core/rig.gd")
+const AnimationClip := preload("res://addons/polyforge/core/animation.gd")
+const RigValidation := preload("res://addons/polyforge/quality/rig_validation.gd")
+const SurfaceTypes := preload("res://addons/polyforge/core/surface_types.gd")
+const MechanicalConstraints := preload("res://addons/polyforge/core/mechanical_constraints.gd")
 const Zone := preload("res://addons/polyforge/terrain/zone.gd")
 const ViewerExport := preload("res://addons/polyforge/exporters/viewer_export.gd")
 const GLTFExport := preload("res://addons/polyforge/exporters/gltf_export.gd")
 const ManifestExport := preload("res://addons/polyforge/exporters/manifest_export.gd")
+const PreviewExport := preload("res://addons/polyforge/exporters/preview_export.gd")
 const BuildPipeline := preload("res://addons/polyforge/build/build_pipeline.gd")
+const CanonicalArtifact := preload("res://addons/polyforge/core/canonical_artifact.gd")
+const AssetIntent := preload("res://addons/polyforge/core/asset_intent.gd")
+const ResolvedDesign := preload("res://addons/polyforge/core/resolved_design.gd")
+const AppearanceStyleBinding := preload("res://addons/polyforge/core/appearance_style_binding.gd")
+const FourBarSolver := preload("res://addons/polyforge/core/four_bar_solver.gd")
+const GeometryFingerprint := preload("res://addons/polyforge/core/geometry_fingerprint.gd")
+const StageRunner := preload("res://addons/polyforge/build/stage_runner.gd")
+const StyleCompiler := preload("res://addons/polyforge/build/style_compiler.gd")
 
 var failures := 0
 
@@ -33,6 +48,94 @@ func _material(name: String) -> StandardMaterial3D:
 	return material
 
 func _initialize() -> void:
+	var intent_a := AssetIntent.new({"size": 2.0, "kind": "prop"},
+		{"palette": "warm"}, [{"id": "reference", "sha256": "abc"}])
+	var intent_b := AssetIntent.new({"kind": "prop", "size": 2.0},
+		{"palette": "cool"}, [{"id": "reference", "sha256": "abc"}])
+	check(intent_a.construction_hash() == intent_b.construction_hash() and
+		intent_a.appearance_hash() != intent_b.appearance_hash(),
+		"appearance intent changes do not invalidate construction intent")
+	var intent_round_trip = AssetIntent.from_canonical_dict(intent_a.to_canonical_dict())
+	check(intent_round_trip.content_hash() == intent_a.content_hash() and
+		intent_round_trip.to_canonical_dict() == intent_a.to_canonical_dict(),
+		"typed intent round-trips losslessly through the canonical dictionary wire format")
+	var resolved_a := ResolvedDesign.new(intent_a.construction_hash(),
+		{"units": "meters", "size": 2.0})
+	var resolved_b := ResolvedDesign.new(intent_b.construction_hash(),
+		{"size": 2.0, "units": "meters"})
+	check(resolved_a.content_hash() == resolved_b.content_hash(),
+		"canonical hashing is stable across dictionary insertion order")
+	var invalid_binding := AppearanceStyleBinding.new(intent_a.appearance_hash(), {
+		"body": {"affects_geometry": true, "color": Color.WHITE}})
+	check(not invalid_binding.validate().is_empty(),
+		"appearance contracts reject geometry-affecting capabilities")
+	var solver_contract := FourBarSolver.new()
+	var unsupported := solver_contract.solve({"problem_type": "deform.character"})
+	check(unsupported.status == "unsupported" and
+		unsupported.diagnostics[0].code == "SOLVER_UNSUPPORTED_PROBLEM",
+		"specialized solvers fail closed on unsupported problem domains")
+	var solver_problem := {"problem_type": "mechanism.four_bar", "parameters": {
+		"crank_center": Vector2.ZERO, "beam_pivot": Vector2(2.0, 1.6),
+		"crank_radius": 0.45, "beam_rear_length": 1.6, "beam_front_length": 2.2,
+		"pitman_length": 2.0, "branch_sign": 1.0}, "constraints": [
+		{"kind": "mechanism.loop_closure"}]}
+	var solved_a := solver_contract.solve(solver_problem, {"samples": 32})
+	var solved_b := solver_contract.solve(solver_problem, {"samples": 32})
+	check(solved_a.status == "solved" and CanonicalArtifact.hash_value(solved_a.solution) ==
+		CanonicalArtifact.hash_value(solved_b.solution),
+		"four-bar solver stage produces deterministic independently hashable evidence")
+	var stage_runner := StageRunner.new("contract_test")
+	stage_runner.record("intent", "test.intent.v1", {}, intent_a)
+	stage_runner.record("resolve", "test.resolve.v1",
+		{"construction": intent_a.construction_hash()}, resolved_a)
+	var stage_snapshot_a := stage_runner.snapshot()
+	var stage_snapshot_b := stage_runner.snapshot()
+	check(stage_snapshot_a.pipeline_hash == stage_snapshot_b.pipeline_hash and
+		stage_snapshot_a.stages.size() == 2,
+		"stage runner records a deterministic immutable dependency ledger")
+	var style_asset := Assembly.new()
+	style_asset.add("body", Stock.with_material(Stock.box(Vector3.ONE),
+		StyleCompiler.slot("body.primary")))
+	var style_geometry_hash := GeometryFingerprint.assembly_hash(style_asset)
+	var style_binding := AppearanceStyleBinding.new(intent_a.appearance_hash(), {
+		"body.primary": {"affects_geometry": false, "color": Color("aa7744"),
+			"metallic": 0.4, "roughness": 0.7}})
+	var style_result := StyleCompiler.apply(style_asset, style_binding)
+	check(style_result.ok and style_result.geometry_hash_before == style_geometry_hash and
+		style_result.geometry_hash_after == style_geometry_hash,
+		"appearance compiler binds slots without changing the geometry fingerprint")
+
+	var preview_quality := TopologyBudget.profile("preview")
+	var runtime_quality := TopologyBudget.profile("runtime")
+	var hero_quality := TopologyBudget.profile("hero")
+	var preview_segments := TopologyBudget.radial_segments(40.0, preview_quality)
+	var runtime_segments := TopologyBudget.radial_segments(40.0, runtime_quality)
+	var hero_segments := TopologyBudget.radial_segments(40.0, hero_quality)
+	check(preview_segments <= runtime_segments and runtime_segments <= hero_segments,
+		"adaptive radial detail is deterministic and monotonic across quality profiles")
+	check(TopologyBudget.sweep_subdivisions([
+		Vector3.ZERO, Vector3.RIGHT, Vector3(1.0, 1.0, 0.0)], runtime_quality) >= 2,
+		"adaptive sweep detail accounts for authored bend curvature")
+	var extended_surface := SurfaceTypes.classify("profile", "primary_silhouette",
+		"paired", "rigid", {"maximum_thickness_ratio": 0.2})
+	check(SurfaceTypes.validate_extended(extended_surface).is_empty(),
+		"part classification keeps construction, role, repetition, and motion orthogonal")
+	var linkage := MechanicalConstraints.solve_four_bar({
+		"crank_center": Vector2(0.0, 0.0), "beam_pivot": Vector2(2.0, 1.6),
+		"crank_radius": 0.45, "beam_rear_length": 1.6, "beam_front_length": 2.2,
+		"pitman_length": 2.0, "branch_sign": 1.0,
+	}, 64)
+	check(linkage.ok and linkage.samples.size() == 65 and
+		linkage.maximum_fixed_length_error < 0.00001 and linkage.loop_closure_error < 0.00001,
+		"constraint-baked four-bar motion stays connected and closes its loop")
+	var clearance := MechanicalConstraints.validate_clearance(linkage, [{
+		"name": "pitman", "start": "crank_pin", "end": "beam_rear_pin",
+		"radius": 0.05,
+	}], [{"name": "remote housing", "center": Vector3(0.0, 0.0, 3.0),
+		"radius": 0.5}], 0.1)
+	check(clearance.ok and clearance.minimum_clearance > clearance.required_clearance,
+		"baked motion clearance checks moving links against static keepouts")
+
 	var poly = PolyMesh.lathe([
 		Vector2(0.0, -1.0), Vector2(0.8, -0.7), Vector2(1.0, 0.2), Vector2(0.0, 1.0)],
 		12, 0.0, 7)
@@ -88,6 +191,10 @@ func _initialize() -> void:
 	check(not multiview.ok and multiview.worst_view == 0.0 and
 		str(multiview.issues[0]).begins_with("view 180°"),
 		"multi-view aggregation preserves angle-qualified semantic failures")
+	var id_image := Image.create(1, 1, false, Image.FORMAT_RGBA8)
+	id_image.set_pixel(0, 0, Color(0.0, 0.62, 0.0, 1.0))
+	check(PreviewExport._count_color(id_image, Color.LIME) == 1,
+		"visibility ID masks compare chroma independently of tone-mapped luminance")
 	var paired_visibility := Readability.aggregate_views([
 		{"yaw": 0.0, "readability": readability, "issues": PackedStringArray(),
 			"part_visibility": {"front": {"visible_fraction": 0.72}}},
@@ -126,6 +233,43 @@ func _initialize() -> void:
 	check(component_validation.ok and component_validation.surfaces.counts.has(
 		"prismatic:structural"),
 		"surface taxonomy selects type-specific validation for component parts")
+	var topology_stats := TopologyBudget.statistics(component_asset.parts)
+	check(topology_stats.rendered_triangles == topology_stats.unique_triangles * 2,
+		"topology statistics separate rendered instances from shared stored geometry")
+	var topology_failure := TopologyBudget.evaluate(component_asset.parts, {
+		"rendered_triangles": topology_stats.rendered_triangles - 1})
+	check(not topology_failure.ok and not topology_failure.failures.is_empty(),
+		"topology budgets reject unwaived rendered triangle overruns")
+	var test_rig := Rig.new()
+	test_rig.add_bone("root")
+	test_rig.add_bone("beam", "root", Transform3D(Basis.IDENTITY, Vector3(0.0, 0.0, 1.0)))
+	test_rig.bind_rigid("pair_front__core", "beam")
+	var test_clip := AnimationClip.new("test_cycle", 1.0, true, 30.0)
+	test_clip.add_key("beam", 0.0, Transform3D.IDENTITY)
+	test_clip.add_key("beam", 0.5, Transform3D(Basis(Vector3.FORWARD, 0.25), Vector3.ZERO))
+	test_clip.add_key("beam", 1.0, Transform3D.IDENTITY)
+	test_rig.add_clip(test_clip)
+	test_rig.add_motion_report("test_linkage", linkage,
+		{"fixed_length": 0.00001, "loop_closure": 0.00001})
+	var test_rig_validation := RigValidation.evaluate(test_rig, component_asset)
+	check(test_rig_validation.ok and test_rig_validation.bones == 2 and
+		test_rig_validation.clips == 1,
+		"rig validation accepts a named rigid binding and closed animation loop")
+	var rig_scene := GLTFExport.scene_from_parts("rig_test", component_asset.parts, test_rig)
+	check(rig_scene.get_node_or_null("Skeleton3D") is Skeleton3D and
+		rig_scene.get_node_or_null("AnimationPlayer") is AnimationPlayer,
+		"rigged scene creation emits real Godot skeleton and animation nodes")
+	rig_scene.free()
+	var rig_glb_path := "user://polyforge_rig_roundtrip.glb"
+	var rig_export_error := GLTFExport.write_preserved(
+		"rig_test", component_asset, rig_glb_path, test_rig)
+	check(rig_export_error == OK, "Godot writes a rigged GLB")
+	if rig_export_error == OK:
+		var rig_inspection := GLTFExport.inspect(rig_glb_path)
+		check(rig_inspection.ok and rig_inspection.skeleton_count == 1 and
+			rig_inspection.bones.has("beam") and rig_inspection.animations.has("test_cycle"),
+			"GLB round trip preserves skeleton, bone names, and clip names")
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(rig_glb_path))
 
 	var asset := Assembly.new()
 	mesh.surface_set_material(0, _material("body"))
@@ -153,6 +297,10 @@ func _initialize() -> void:
 	check(viewer.verts.size() > 0 and viewer.tris.size() > 0, "viewer export contains geometry")
 	check(viewer.bones.size() == 1 and viewer.skin.size() == viewer.verts.size() / 3,
 		"static viewer contract supplies root skin")
+	var rigged_viewer := ViewerExport.assembly_data(component_asset, test_rig, "rig_test")
+	check(rigged_viewer.bones.size() == 2 and rigged_viewer.anims.size() == 1 and
+		rigged_viewer.anims[0].tracks[1].size() == 3,
+		"viewer contract includes rig bindings and sampled animation transforms")
 
 	var stock_box := Stock.with_material(Stock.box(Vector3.ONE), _material("stock"))
 	asset.add("stock_box", stock_box, Transform3D(Basis.IDENTITY, Vector3(6.0, 0.0, 0.0)))
@@ -187,6 +335,20 @@ func _initialize() -> void:
 		"res://examples/bronze_guardian_recipe.gd"))
 	check(guardian_sweep.ok and guardian_sweep.records.size() == 9,
 		"parameter sweep validates Guardian single and pairwise boundary combinations")
+	var vapor_derrick := AssetRecipe.load_file("res://examples/arcane_pumpjack_recipe.gd")
+	var vapor_validation := BuildPipeline.validate(vapor_derrick)
+	check(vapor_validation.ok and vapor_validation.process.stages == 6 and
+		vapor_validation.reference.available and vapor_validation.reference.ok,
+		"vapor derrick completes the staged process and reference-image semantic gate")
+	check(vapor_validation.reference.reference_image.sha256 ==
+		"e90f854563b3f8c19d7f30c6b67d1923ecb5727754a76b5fe68e2341ce8d5490" and
+		vapor_validation.reference.measurements.size() >= 18,
+		"reference evidence is pinned to the supplied image and reports measured semantics")
+	check(vapor_derrick.style_compilation.geometry_hash_before ==
+		vapor_derrick.style_compilation.geometry_hash_after and
+		vapor_derrick.rig.provenance.geometry_hash ==
+		vapor_derrick.style_compilation.geometry_hash_after,
+		"style and rig stages enforce geometry ownership through matching hashes")
 
 	var recipe := AssetRecipe.normalize({
 		"name": "named_test",
@@ -199,9 +361,10 @@ func _initialize() -> void:
 	var manifest := ManifestExport.data(recipe, validation, {"glb": "named_test.glb"})
 	check(manifest.parts.size() == 3 and manifest.anchors.socket == [1.0, 2.0, 3.0],
 		"manifest preserves named parts and numeric anchors")
-	check(manifest.format_version == 5 and manifest.has("parameters") and
-		manifest.has("attachments") and manifest.has("component_instances"),
-		"manifest records components, surface semantics, parameters, and attachments")
+	check(manifest.format_version == 7 and manifest.has("parameters") and
+		manifest.has("attachments") and manifest.has("component_instances") and
+		manifest.has("topology") and manifest.has("rig"),
+		"manifest v7 records components, topology, rig data, and authored metadata")
 
 	var glb_path := "user://polyforge_roundtrip.glb"
 	var export_error := GLTFExport.write_preserved("named_test", asset, glb_path)
