@@ -28,3 +28,13 @@ func validate() -> PackedStringArray:
 		elif not payload.transforms[id] is Transform3D:
 			errors.append("solved assembly transform for %s must be Transform3D" % id)
 	return errors
+
+static func from_canonical_dict(record: Dictionary):
+	var canonical := load("res://addons/polyforge/core/canonical_artifact.gd")
+	var source: Dictionary = canonical.decanonicalize(record.get("payload", {}))
+	return load("res://addons/polyforge/core/solved_assembly.gd").new(
+		str(source.get("plan_hash", "")), str(source.get("catalog_hash", "")),
+		source.get("instances", []), source.get("transforms", {}),
+		source.get("connections", []), source.get("residuals", []),
+		source.get("clearance", []), source.get("solver", {}),
+		str(record.get("producer_version", "")))

@@ -32,6 +32,10 @@ geometry-free `AssemblyPlan` through typed sockets and the specialized
 | `core/assembly_plan.gd` | Geometry-free component graph, connection constraints, and keepouts |
 | `core/solved_assembly.gd` | Authoritative transforms and inspectable residual/clearance evidence |
 | `core/socket_contract.gd` | Socket type, compatibility, twist, cardinality, and tolerance validation |
+| `core/plan_patch.gd` | Explicit hash-bound upstream repair operations with provenance and attempt number |
+| `core/assembly_candidate_set.gd` | Canonical geometry-free candidate plans from one planner invocation |
+| `core/candidate_repair_report.gd` | Bounded repair histories and provisional solver evidence |
+| `core/candidate_selection.gd` | Independent hard-gate evidence and explicit soft-objective selection |
 | `core/surface_types.gd` | Orthogonal construction, role, repetition, and motion taxonomy |
 | `core/topology_budget.gd` | Play-size adaptive topology profiles and rendered/unique triangle accounting |
 | `core/rig.gd` | Skeleton bones, skin bindings, clips, and validated motion reports |
@@ -56,6 +60,7 @@ geometry-free `AssemblyPlan` through typed sockets and the specialized
 | `quality/symmetry.gd` | Scoped component-reuse and reflection contracts |
 | `quality/rig_validation.gd` | Skeleton, skin, clip-loop, and mechanical report validation |
 | `quality/process_validation.gd` | Stage-ledger and cross-stage ownership validation |
+| `quality/rigid_solution_validation.gd` | Solver-independent recomputation of rigid transforms, sockets, and clearance |
 | `quality/reference_validation.gd` | Renderer-independent semantic evidence against a pinned reference profile |
 | `quality/visual_evidence.gd` | Normalized cross-renderer evidence vectors and renderer-scoped baseline policy |
 | `terrain/zone.gd` | Landforms, spline cuts, surface rules, and constrained deterministic scatter |
@@ -67,6 +72,9 @@ geometry-free `AssemblyPlan` through typed sockets and the specialized
 | `build/stage_runner.gd` | Immutable domain-free dependency and provenance ledger |
 | `build/style_compiler.gd` | Material-slot binding with geometry-hash enforcement |
 | `build/assembly_compiler.gd` | Geometry compilation restricted to accepted solved assemblies |
+| `build/assembly_candidate_generator.gd` | Deterministic expansion of a base plan into proposed variants |
+| `build/candidate_repair_stage.gd` | Bounded diagnostic/patch/re-solve loop with full history |
+| `build/candidate_selector.gd` | Hard-valid eligibility followed by declared deterministic ranking |
 | `cli/polyforge_cli.gd` | Headless `build` and `inspect` commands |
 
 ## Install
@@ -186,6 +194,17 @@ The initial rigid solver is intentionally narrow: it propagates exact socket tra
 closure loops, and checks component clearance spheres against explicit keepouts. It does not search
 arbitrary geometry, solve deformable bodies, or stand in for mechanism kinematics. New domains
 implement the shared `SolverStage` contract and own their own representations and diagnostics.
+
+Candidate generation and repair are separate from authority. A planner may emit multiple
+geometry-free plans. A registered domain repair operator may translate a supported diagnostic
+into a hash-bound `PlanPatch`, but the patch applier permits only declared operation kinds and
+refuses locked targets. Attempts are bounded and every intermediate patch is retained.
+
+Solver success is provisional. `RigidSolutionValidation` independently recomputes fixed transforms,
+socket compatibility, cardinality, twist, loop residuals, and explicit keepout clearance. Only
+hard-valid candidates reach `CandidateSelector`; declared soft objectives rank that eligible set.
+The selected plan is solved once more before geometry compilation, preventing candidate-loop state
+from becoming production authority.
 
 ### Reusable components and scoped symmetry
 

@@ -39,6 +39,18 @@ const AssemblyPlan := preload("res://addons/polyforge/core/assembly_plan.gd")
 const SolvedAssembly := preload("res://addons/polyforge/core/solved_assembly.gd")
 const RigidAssemblySolver := preload("res://addons/polyforge/core/rigid_assembly_solver.gd")
 const AssemblyCompiler := preload("res://addons/polyforge/build/assembly_compiler.gd")
+const PlanPatch := preload("res://addons/polyforge/core/plan_patch.gd")
+const PlanPatchApplier := preload("res://addons/polyforge/build/plan_patch_applier.gd")
+const CandidateGenerator := preload("res://addons/polyforge/build/assembly_candidate_generator.gd")
+const AssemblyCandidateSet := preload("res://addons/polyforge/core/assembly_candidate_set.gd")
+const RepairRegistry := preload("res://addons/polyforge/build/repair_registry.gd")
+const RigidTwistRepair := preload("res://addons/polyforge/core/rigid_twist_repair.gd")
+const CandidateRepairStage := preload("res://addons/polyforge/build/candidate_repair_stage.gd")
+const CandidateRepairReport := preload("res://addons/polyforge/core/candidate_repair_report.gd")
+const CandidateSelection := preload("res://addons/polyforge/core/candidate_selection.gd")
+const CandidateSelector := preload("res://addons/polyforge/build/candidate_selector.gd")
+const RigidSolutionValidation := preload("res://addons/polyforge/quality/rigid_solution_validation.gd")
+const ProcessValidation := preload("res://addons/polyforge/quality/process_validation.gd")
 
 var failures := 0
 
@@ -95,6 +107,12 @@ func _has_diagnostic(result: Dictionary, code: String) -> bool:
 		if str(diagnostic.get("code", "")) == code:
 			return true
 	return false
+
+func _candidate(report, id: String) -> Dictionary:
+	for candidate in report.payload.candidates:
+		if str(candidate.id) == id:
+			return candidate
+	return {}
 
 func _initialize() -> void:
 	var intent_a := AssetIntent.new({"size": 2.0, "kind": "prop"},
@@ -162,6 +180,10 @@ func _initialize() -> void:
 	check(rigid_artifact.validate().is_empty() and
 		AssemblyCompiler.compile(rigid_catalog, rigid_artifact).ok,
 		"geometry compiler accepts a validated solved assembly artifact")
+	var solved_round_trip = SolvedAssembly.from_canonical_dict(
+		rigid_artifact.to_canonical_dict())
+	check(solved_round_trip.to_canonical_dict() == rigid_artifact.to_canonical_dict(),
+		"solved assemblies round-trip typed transforms through the canonical wire format")
 	check(not AssemblyCompiler.compile(rigid_catalog, rigid_plan).ok and
 		AssemblyCompiler.compile(rigid_catalog, rigid_plan).failures[0] ==
 		"GEOMETRY_REQUIRES_SOLVED_ASSEMBLY",
@@ -225,6 +247,108 @@ func _initialize() -> void:
 	check(blocked.status == "unsatisfiable" and
 		_has_diagnostic(blocked, "RIGID_CLEARANCE_BLOCKED"),
 		"rigid solver rejects a solved placement that violates an explicit keepout")
+	var plan_round_trip = AssemblyPlan.from_canonical_dict(rigid_plan.to_canonical_dict())
+	check(plan_round_trip.validate().is_empty() and
+		plan_round_trip.to_canonical_dict() == rigid_plan.to_canonical_dict(),
+		"assembly plans round-trip typed transforms through the canonical wire format")
+	var bad_twist_patch := PlanPatch.new(rigid_plan.content_hash(),
+		{"id": "test.proposal", "version": "1.0.0"}, [], [{
+			"id": "rotate_left", "kind": "set_connection_twist",
+			"connection_id": "left_closure", "twist_degrees": 90.0}])
+	var original_plan_hash := rigid_plan.content_hash()
+	var patched := PlanPatchApplier.apply(rigid_plan, bad_twist_patch)
+	check(patched.ok and rigid_plan.content_hash() == original_plan_hash and
+		float(patched.plan.payload.connections[0].twist_degrees) == 90.0,
+		"plan patches create a new plan without mutating their source artifact")
+	var locked_plan := AssemblyPlan.new("test_design_hash", rigid_catalog.content_hash(),
+		"root", rigid_plan.payload.instances, rigid_plan.payload.connections, [],
+		"test.locked_plan.v1", ["connection:left_closure.twist_degrees"])
+	var locked_patch := PlanPatch.new(locked_plan.content_hash(),
+		{"id": "test.proposal", "version": "1.0.0"}, [], [{
+			"id": "rotate_locked", "kind": "set_connection_twist",
+			"connection_id": "left_closure", "twist_degrees": 90.0}])
+	var locked_result := PlanPatchApplier.apply(locked_plan, locked_patch)
+	check(not locked_result.ok and locked_result.diagnostics[0].code ==
+		"PATCH_TARGET_LOCKED",
+		"plan patches cannot modify author-locked relationships")
+	var locked_round_trip = AssemblyPlan.from_canonical_dict(locked_plan.to_canonical_dict())
+	check(locked_round_trip.to_canonical_dict() == locked_plan.to_canonical_dict(),
+		"assembly plan locks remain stable across canonical serialization")
+	var candidate_generation := CandidateGenerator.generate(rigid_plan, [{
+		"id": "bad_twist", "patch": bad_twist_patch}])
+	var repair_registry := RepairRegistry.new()
+	repair_registry.register(RigidTwistRepair.new(rigid_catalog))
+	var repair_a := CandidateRepairStage.run(candidate_generation, rigid_solver,
+		repair_registry, 1)
+	var repair_b := CandidateRepairStage.run(candidate_generation, rigid_solver,
+		repair_registry, 1)
+	check(repair_a.ok and repair_a.artifact.content_hash() ==
+		repair_b.artifact.content_hash() and
+		_candidate(repair_a.artifact, "bad_twist").status == "solved" and
+		_candidate(repair_a.artifact, "bad_twist").repair_count == 1,
+		"bounded repair deterministically converts a supported diagnostic into one patch")
+	var candidate_set_round_trip = AssemblyCandidateSet.from_canonical_dict(
+		candidate_generation.artifact.to_canonical_dict())
+	var repair_round_trip = CandidateRepairReport.from_canonical_dict(
+		repair_a.artifact.to_canonical_dict())
+	check(candidate_set_round_trip.to_canonical_dict() ==
+		candidate_generation.artifact.to_canonical_dict() and
+		repair_round_trip.to_canonical_dict() == repair_a.artifact.to_canonical_dict(),
+		"candidate and repair artifacts have one lossless canonical wire representation")
+	var repair_exhausted := repair_registry.propose(rigid_plan,
+		[{"code": "RIGID_SOCKET_TYPE_MISMATCH", "entities": ["left_closure"]}], 1)
+	check(not repair_exhausted.ok and repair_exhausted.diagnostics[0].code ==
+		"REPAIR_EXHAUSTED",
+		"repair registry refuses diagnostics outside registered capabilities")
+	var no_attempts := CandidateRepairStage.run(candidate_generation, rigid_solver,
+		repair_registry, 0)
+	check(no_attempts.ok and _candidate(no_attempts.artifact, "bad_twist").status ==
+		"rejected" and _candidate(no_attempts.artifact, "bad_twist").repair_count == 0,
+		"repair loop honors its attempt budget without hidden retries")
+	var selection := CandidateSelector.select(rigid_catalog, repair_a.artifact)
+	check(selection.ok and selection.artifact.payload.selected_candidate_id == "baseline" and
+		selection.artifact.payload.eligible.size() == 2,
+		"hard-valid candidates are ranked by explicit objectives after validation")
+	var selection_round_trip = CandidateSelection.from_canonical_dict(
+		selection.artifact.to_canonical_dict())
+	check(selection_round_trip.to_canonical_dict() == selection.artifact.to_canonical_dict(),
+		"candidate selection evidence round-trips losslessly")
+	var invalid_objective := CandidateSelector.select(rigid_catalog, repair_a.artifact,
+		[{"metric": "opaque_ai_score", "direction": "max"}])
+	check(not invalid_objective.ok and invalid_objective.failures[0] ==
+		"CANDIDATE_OBJECTIVE_UNSUPPORTED",
+		"candidate policy rejects undeclared soft metrics instead of ranking opaquely")
+	var forged_solution: Dictionary = rigid_solved_a.solution.duplicate(true)
+	forged_solution.transforms.bridge = Transform3D(Basis.IDENTITY,
+		Vector3(0.5, 0.0, 0.0))
+	var forged_report := CandidateRepairReport.new("forged_candidate_set_hash", [{
+		"id": "forged", "status": "solved", "plan": rigid_plan.to_canonical_dict(),
+		"initial_plan_hash": rigid_plan.content_hash(),
+		"plan_hash": rigid_plan.content_hash(), "solution": forged_solution,
+		"solve_diagnostics": [], "repair_history": [], "repair_count": 0,
+		"attempts": 0}], 0)
+	var plan_before_validation := rigid_plan.content_hash()
+	var forged_selection := CandidateSelector.select(rigid_catalog, forged_report)
+	check(not forged_selection.ok and forged_selection.rejected[0].reason ==
+		"hard_validation_failed" and rigid_plan.content_hash() == plan_before_validation,
+		"selector independently rejects forged solver success without mutating the plan")
+	var independent_validation := RigidSolutionValidation.evaluate(rigid_catalog,
+		rigid_plan, rigid_solved_a.solution)
+	var connection_measurements: Array = independent_validation.measurements.filter(
+		func(item): return item.kind == "socket_residual")
+	check(independent_validation.ok and connection_measurements.size() ==
+		rigid_connections.size(),
+		"independent validator recomputes every rigid connection from authoritative transforms")
+	var translated_solution: Dictionary = rigid_solved_a.solution.duplicate(true)
+	for instance_id in translated_solution.transforms:
+		var transform: Transform3D = translated_solution.transforms[instance_id]
+		translated_solution.transforms[instance_id] = Transform3D(transform.basis,
+			transform.origin + Vector3(2.0, 0.0, 0.0))
+	var translated_validation := RigidSolutionValidation.evaluate(rigid_catalog,
+		rigid_plan, translated_solution)
+	check(not translated_validation.ok and _has_diagnostic(translated_validation,
+		"VALIDATION_FIXED_TRANSFORM_CHANGED"),
+		"independent validator pins the root even when all relative connections still close")
 	var stage_runner := StageRunner.new("contract_test")
 	stage_runner.record("intent", "test.intent.v1", {}, intent_a)
 	stage_runner.record("resolve", "test.resolve.v1",
@@ -492,10 +616,30 @@ func _initialize() -> void:
 		"style and rig stages enforce geometry ownership through matching hashes")
 	var arcane_relay := AssetRecipe.load_file("res://examples/arcane_relay_recipe.gd")
 	var relay_validation := BuildPipeline.validate(arcane_relay)
-	check(relay_validation.ok and relay_validation.process.stages == 6 and
+	check(relay_validation.ok and relay_validation.process.stages == 9 and
 		arcane_relay.contracts.has("assembly_plan") and
 		arcane_relay.contracts.has("solved_assembly"),
 		"static relay completes the plan, specialized solve, geometry, and style stages")
+	check(arcane_relay.contracts.candidate_selection.payload.selected_candidate_id ==
+		"baseline" and arcane_relay.contracts.candidate_repair_report.payload.candidates.size() == 2,
+		"relay hard-gates two candidates and prefers the valid zero-repair baseline")
+	var tampered_relay: Dictionary = arcane_relay.duplicate(true)
+	tampered_relay.contracts.candidate_selection.payload.selected_plan_hash = "tampered"
+	var tampered_process := ProcessValidation.evaluate(tampered_relay)
+	check(not tampered_process.ok and tampered_process.failures.has(
+		"PROCESS_SELECTION_PLAN_HASH_MISMATCH"),
+		"process ledger rejects a candidate selection detached from its chosen plan")
+	var reordered_relay: Dictionary = arcane_relay.duplicate(true)
+	var stage_swap = reordered_relay.process.stages[2]
+	reordered_relay.process.stages[2] = reordered_relay.process.stages[3]
+	reordered_relay.process.stages[3] = stage_swap
+	reordered_relay.process.erase("pipeline_hash")
+	reordered_relay.process["pipeline_hash"] = CanonicalArtifact.hash_value(
+		reordered_relay.process)
+	var reordered_process := ProcessValidation.evaluate(reordered_relay)
+	check(not reordered_process.ok and reordered_process.failures.has(
+		"PROCESS_CANDIDATE_STAGE_ORDER_INVALID"),
+		"process ledger rejects reordered proposal and repair ownership stages")
 	check(arcane_relay.contracts.solved_assembly.payload.plan_hash ==
 		CanonicalArtifact.hash_value(arcane_relay.contracts.assembly_plan) and
 		arcane_relay.style_compilation.geometry_hash_before ==
