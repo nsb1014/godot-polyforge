@@ -32,6 +32,8 @@ const DesignBrief := preload("res://addons/polyforge/core/design_brief.gd")
 const CohesionContract := preload("res://addons/polyforge/core/cohesion_contract.gd")
 const InterfacePlan := preload("res://addons/polyforge/core/interface_plan.gd")
 const InterfaceCompilation := preload("res://addons/polyforge/core/interface_compilation.gd")
+const SuspensionPlan := preload("res://addons/polyforge/core/suspension_plan.gd")
+const SuspensionCompilation := preload("res://addons/polyforge/core/suspension_compilation.gd")
 const AppearanceStyleBinding := preload("res://addons/polyforge/core/appearance_style_binding.gd")
 const FourBarSolver := preload("res://addons/polyforge/core/four_bar_solver.gd")
 const GeometryFingerprint := preload("res://addons/polyforge/core/geometry_fingerprint.gd")
@@ -43,6 +45,7 @@ const AssemblyPlan := preload("res://addons/polyforge/core/assembly_plan.gd")
 const SolvedAssembly := preload("res://addons/polyforge/core/solved_assembly.gd")
 const RigidAssemblySolver := preload("res://addons/polyforge/core/rigid_assembly_solver.gd")
 const AssemblyCompiler := preload("res://addons/polyforge/build/assembly_compiler.gd")
+const SuspensionCompiler := preload("res://addons/polyforge/build/suspension_compiler.gd")
 const PlanPatch := preload("res://addons/polyforge/core/plan_patch.gd")
 const PlanPatchApplier := preload("res://addons/polyforge/build/plan_patch_applier.gd")
 const CandidateGenerator := preload("res://addons/polyforge/build/assembly_candidate_generator.gd")
@@ -58,6 +61,7 @@ const ProcessValidation := preload("res://addons/polyforge/quality/process_valid
 const ReferenceValidation := preload("res://addons/polyforge/quality/reference_validation.gd")
 const CohesionValidation := preload("res://addons/polyforge/quality/cohesion_validation.gd")
 const MassHierarchyValidation := preload("res://addons/polyforge/quality/mass_hierarchy_validation.gd")
+const SuspensionValidation := preload("res://addons/polyforge/quality/suspension_validation.gd")
 
 var failures := 0
 
@@ -223,6 +227,32 @@ func _initialize() -> void:
 		AssemblyCompiler.compile(rigid_catalog, rigid_plan).failures[0] ==
 		"GEOMETRY_REQUIRES_SOLVED_ASSEMBLY",
 		"geometry ownership boundary rejects an unsolved assembly plan")
+	var rigid_geometry = AssemblyCompiler.compile(rigid_catalog, rigid_artifact).assembly
+	var suspension_plan := SuspensionPlan.new(rigid_artifact.content_hash(),
+		GeometryFingerprint.assembly_hash(rigid_geometry), [{"id": "test_cable",
+			"a": {"instance": "root", "socket": "left"},
+			"b": {"instance": "root", "socket": "right"}, "radius": 0.02,
+			"minimum_length": 1.9, "maximum_length": 2.1,
+			"material_slot": "test.rope", "profile_id": "test.cable.v1"}])
+	var suspension_result := SuspensionCompiler.compile(rigid_catalog, rigid_artifact,
+		rigid_geometry, suspension_plan)
+	check(suspension_result.ok and suspension_result.artifact.payload.members.size() == 1 and
+		SuspensionPlan.from_canonical_dict(suspension_plan.to_canonical_dict()).content_hash() ==
+			suspension_plan.content_hash() and SuspensionCompilation.from_canonical_dict(
+			suspension_result.artifact.to_canonical_dict()).content_hash() ==
+			suspension_result.artifact.content_hash(),
+		"suspension plans compile deterministically and round-trip their evidence")
+	var missing_socket_plan := SuspensionPlan.new(rigid_artifact.content_hash(),
+		GeometryFingerprint.assembly_hash(rigid_geometry), [{"id": "bad_cable",
+			"a": {"instance": "root", "socket": "missing"},
+			"b": {"instance": "root", "socket": "right"}, "radius": 0.02,
+			"minimum_length": 0.1, "maximum_length": 3.0,
+			"material_slot": "test.rope", "profile_id": "test.cable.v1"}])
+	var missing_socket_result := SuspensionCompiler.compile(rigid_catalog, rigid_artifact,
+		rigid_geometry, missing_socket_plan)
+	check(not missing_socket_result.ok and _has_prefix(missing_socket_result.failures,
+		"SUSPENSION_UNKNOWN_ENDPOINT"),
+		"suspension compilation fails closed on an unknown solved socket")
 	var rigid_unsupported := rigid_solver.solve({"problem_type": "deform.character"})
 	check(rigid_unsupported.status == "unsupported" and
 		_has_diagnostic(rigid_unsupported, "SOLVER_UNSUPPORTED_PROBLEM"),
@@ -750,6 +780,23 @@ func _initialize() -> void:
 	check(relay_residuals.size() == 5 and relay_residuals.all(
 		func(residual): return bool(residual.get("ok", false))),
 		"reference relay records passing residual evidence for every socket connection")
+	var aerostat := AssetRecipe.load_file("res://examples/arcane_aerostat_recipe.gd")
+	var aerostat_validation := BuildPipeline.validate(aerostat)
+	check(aerostat_validation.ok and aerostat_validation.process.stages == 11 and
+		aerostat_validation.suspension.ok and aerostat_validation.suspension.members == 5 and
+		aerostat.contracts.suspension_plan.payload.input_geometry_hash ==
+			aerostat.contracts.interface_compilation.payload.output_geometry_hash and
+		aerostat.style_compilation.geometry_hash_after ==
+			aerostat.contracts.suspension_compilation.payload.output_geometry_hash,
+		"aerostat preserves rigid, interface, suspension, and style ownership through one hash chain")
+	var forged_suspension: Dictionary = aerostat.duplicate(true)
+	for evidence in forged_suspension.contracts.suspension_compilation.payload.members:
+		if str(evidence.id) == "rope_fl":
+			evidence.length += 0.5
+	var forged_suspension_result := SuspensionValidation.evaluate(forged_suspension)
+	check(not forged_suspension_result.ok and _has_prefix(
+		forged_suspension_result.failures, "SUSPENSION_PAIR_LENGTH_MISMATCH"),
+		"suspension validation rejects asymmetric paired load paths")
 
 	var recipe := AssetRecipe.normalize({
 		"name": "named_test",

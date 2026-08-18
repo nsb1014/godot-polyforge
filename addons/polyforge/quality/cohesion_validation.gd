@@ -47,8 +47,13 @@ static func evaluate(spec: Dictionary) -> Dictionary:
 		failures.append("COHESION_SOLVED_ASSEMBLY_HASH_MISMATCH")
 	if str(compilation.payload.get("interface_plan_hash", "")) != plan_hash:
 		failures.append("COHESION_COMPILATION_PLAN_HASH_MISMATCH")
-	if str(compilation.payload.get("output_geometry_hash", "")) != \
-			GeometryFingerprint.assembly_hash(spec.assembly):
+	var final_geometry_hash := str(compilation.payload.get("output_geometry_hash", ""))
+	if contracts.has("suspension_compilation"):
+		var suspension: Dictionary = contracts.suspension_compilation
+		if str(suspension.payload.get("input_geometry_hash", "")) != final_geometry_hash:
+			failures.append("COHESION_SUSPENSION_INPUT_GEOMETRY_HASH_MISMATCH")
+		final_geometry_hash = str(suspension.payload.get("output_geometry_hash", ""))
+	if final_geometry_hash != GeometryFingerprint.assembly_hash(spec.assembly):
 		failures.append("COHESION_OUTPUT_GEOMETRY_HASH_MISMATCH")
 	var brief_groups := {}
 	for group in brief.payload.get("mass_hierarchy", []):

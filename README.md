@@ -19,6 +19,11 @@ geometry-free `AssemblyPlan` through typed sockets and the specialized
 changing solved transforms, and a cohesion contract checks attachment and multi-view mass hierarchy
 before reference preferences are considered.
 
+`examples/arcane_aerostat_recipe.gd` extends that proof to a compound suspended asset. Rigid
+placement owns the envelope, basket, lantern, and side pods; interface compilation owns only the
+pod collars; a hash-bound suspension plan emits and verifies ropes without moving any solved
+component; appearance remains the final non-geometric stage.
+
 ## Modules
 
 | Path | Purpose |
@@ -42,6 +47,8 @@ before reference preferences are considered.
 | `core/cohesion_contract.gd` | Asset-specific backbone, interface grammar, and projected-mass targets |
 | `core/interface_plan.gd` | Connection-local transition treatments bound to one solved assembly |
 | `core/interface_compilation.gd` | Hash-linked interface geometry and measured endpoint-overlap evidence |
+| `core/suspension_plan.gd` | Socket-to-socket tension members bound to solved transforms and input geometry |
+| `core/suspension_compilation.gd` | Hash-linked emitted-member and measured-length evidence |
 | `core/surface_types.gd` | Orthogonal construction, role, repetition, and motion taxonomy |
 | `core/topology_budget.gd` | Play-size adaptive topology profiles and rendered/unique triangle accounting |
 | `core/rig.gd` | Skeleton bones, skin bindings, clips, and validated motion reports |
@@ -70,6 +77,7 @@ before reference preferences are considered.
 | `quality/reference_validation.gd` | Required, preferred, and informational semantic evidence from a pinned reference profile |
 | `quality/cohesion_validation.gd` | Hard backbone, interface-profile, geometry-hash, and endpoint-overlap validation |
 | `quality/mass_hierarchy_validation.gd` | Recipe-declared projected-area bands and dominance across rendered views |
+| `quality/suspension_validation.gd` | Suspension provenance, emitted-part, range, and paired-length validation |
 | `quality/visual_evidence.gd` | Normalized cross-renderer evidence vectors and renderer-scoped baseline policy |
 | `terrain/zone.gd` | Landforms, spline cuts, surface rules, and constrained deterministic scatter |
 | `exporters/viewer_export.gd` | JSON and self-contained HTML export for the bundled WebGL viewer |
@@ -81,6 +89,7 @@ before reference preferences are considered.
 | `build/style_compiler.gd` | Material-slot binding with geometry-hash enforcement |
 | `build/assembly_compiler.gd` | Geometry compilation restricted to accepted solved assemblies |
 | `build/rigid_interface_compiler.gd` | Deterministic collars and transition geometry inside solved rigid connections |
+| `build/suspension_compiler.gd` | Deterministic tension members between solved typed sockets |
 | `build/assembly_candidate_generator.gd` | Deterministic expansion of a base plan into proposed variants |
 | `build/candidate_repair_stage.gd` | Bounded diagnostic/patch/re-solve loop with full history |
 | `build/candidate_selector.gd` | Hard-valid eligibility followed by declared deterministic ranking |
@@ -224,6 +233,12 @@ declares the structural backbone, repeated interface profile, projected-area ban
 ratios for the specific recipe. After the rigid solve, `InterfacePlan` may add collars, sleeves, or
 brackets but cannot move a component. Endpoint overlap is measured from emitted geometry, and the
 style compiler consumes the post-interface geometry hash.
+
+Remote suspended masses are still placed by the rigid solver so their transforms stay
+authoritative. `SuspensionPlan` then references typed endpoints on those solved instances.
+`SuspensionCompiler` can add straight tension members and length evidence, but it cannot reposition
+an endpoint or repair a rigid solve. Paired-member tolerances are validated independently, and the
+style compiler must consume the post-suspension geometry hash.
 
 Mass hierarchy is deliberately not a universal aesthetic score. Godot renders each declared mass
 group in isolation, normalizes its projected area against the declared groups, and uses the median

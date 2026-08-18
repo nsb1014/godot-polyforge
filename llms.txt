@@ -99,6 +99,8 @@ Godot before the build succeeds.
 - Add rigid transition geometry only through an `InterfacePlan` bound to the solved-assembly hash.
   Interface compilation may add collars, sleeves, or brackets, but must not move components.
 - Measure endpoint overlap from emitted interface geometry. Point contact is not visual attachment.
+- Model suspension as a separate socket-to-socket plan after rigid interfaces. It may emit tension
+  members and length evidence, but it must never move solved components or silently repair geometry.
 - Score mass hierarchy from the median normalized projected area across declared semantic views.
   Recipes own share bands and dominance ratios; do not install one universal aesthetic threshold.
 - Pin rigid motion in `MotionContract` and bind the compiled rig to the exact geometry and contract
@@ -135,6 +137,8 @@ Godot before the build succeeds.
   hierarchy, assembly cohesion, and connection-local geometry ownership.
 - `build/rigid_interface_compiler.gd`, `quality/cohesion_validation.gd`, and
   `quality/mass_hierarchy_validation.gd`: post-solve transitions and deterministic cohesion gates.
+- `core/suspension_plan.gd`, `build/suspension_compiler.gd`, and
+  `quality/suspension_validation.gd`: isolated tension-member ownership and paired-length evidence.
 - `build/stage_runner.gd` and `build/style_compiler.gd`: isolated stages and enforced style boundary.
 - `quality/reference_validation.gd` and `quality/visual_evidence.gd`: reference and renderer evidence.
 - `core/attachments.gd`: sampled surface frames, child bindings, and attachment drift checks.
