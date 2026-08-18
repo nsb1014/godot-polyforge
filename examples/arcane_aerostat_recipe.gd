@@ -12,6 +12,7 @@ const AssetIntent := preload("res://addons/polyforge/core/asset_intent.gd")
 const DesignBrief := preload("res://addons/polyforge/core/design_brief.gd")
 const ResolvedDesign := preload("res://addons/polyforge/core/resolved_design.gd")
 const CohesionContract := preload("res://addons/polyforge/core/cohesion_contract.gd")
+const PlausibilityContract := preload("res://addons/polyforge/core/plausibility_contract.gd")
 const AppearanceStyleBinding := preload("res://addons/polyforge/core/appearance_style_binding.gd")
 const ReferenceProfile := preload("res://addons/polyforge/core/reference_profile.gd")
 const AssemblyPlan := preload("res://addons/polyforge/core/assembly_plan.gd")
@@ -67,6 +68,13 @@ func _slots() -> Dictionary:
 			"emission_enabled": true, "emission": Color("42dbe5"),
 			"emission_energy": 1.8},
 	}
+
+func _termination(size: float) -> Dictionary:
+	return {"family": "tension.eyelet", "material_slot": "structure.brass",
+		"inner_radius": size * 0.012, "outer_radius": size * 0.022,
+		"boss_height": size * 0.040, "segments": 6,
+		"minimum_host_overlap": 0.04, "endpoint_tolerance": size * 0.0001,
+		"maximum_surface_distance": size * 0.012}
 
 func _envelope(size: float, materials: Dictionary, segments: int) -> RefCounted:
 	var c := Component.new("aerostat_envelope_v1")
@@ -132,8 +140,8 @@ func _envelope(size: float, materials: Dictionary, segments: int) -> RefCounted:
 		_socket("basket_position", ["basket_hanger"], 0.0))
 	c.define_typed_socket("lantern_position", _xf(Vector3(0.0, -size * 0.39, 0.0)),
 		_socket("lantern_position", ["lantern_hanger"], 0.0))
-	var ax := size * 0.19
-	var az := size * 0.13
+	var ax := size * 0.15
+	var az := size * 0.10
 	var ay := -size * 0.22
 	for anchor in [
 		{"name": "rope_fl", "p": Vector3(-ax, ay, az)},
@@ -280,6 +288,36 @@ func build(p) -> Dictionary:
 			"minimum_ratio": 2.1, "target_ratio": 3.6},
 			{"higher": "secondary_basket", "lower": "tertiary_suspension",
 				"minimum_ratio": 1.05, "target_ratio": 1.35}], true)
+	var plausibility := PlausibilityContract.new(brief.content_hash(),
+		"suspended_vehicle", [
+			{"id": "envelope", "role": "lift_and_harness", "support_source": true},
+			{"id": "basket", "role": "payload", "requires_support": true},
+			{"id": "lantern", "role": "hanging_accessory", "requires_support": true},
+			{"id": "pod_left", "role": "mounted_accessory", "requires_support": true},
+			{"id": "pod_right", "role": "mounted_accessory", "requires_support": true},
+		], [
+			{"id": "basket_load_path", "from": "basket", "to": "envelope",
+				"kind": "hangs_from", "basis": "functional_inference",
+				"authority": "required", "evidence": {"suspension_members": [
+					"rope_fl", "rope_fr", "rope_bl", "rope_br"],
+					"require_terminations": true}},
+			{"id": "lantern_load_path", "from": "lantern", "to": "envelope",
+				"kind": "hangs_from", "basis": "observed", "authority": "required",
+				"evidence": {"suspension_members": ["lantern_drop"],
+					"require_terminations": true}},
+			{"id": "left_pod_mount", "from": "pod_left", "to": "envelope",
+				"kind": "mounts_to", "basis": "observed", "authority": "required",
+				"evidence": {"connection_id": "mount_pod_left",
+					"require_visible_interface": true}},
+			{"id": "right_pod_mount", "from": "pod_right", "to": "envelope",
+				"kind": "mounts_to", "basis": "observed", "authority": "required",
+				"evidence": {"connection_id": "mount_pod_right",
+					"require_visible_interface": true}},
+			{"id": "blue_drape_completion", "from": "envelope", "to": "envelope",
+				"kind": "decorates", "basis": "stylistic_hypothesis",
+				"authority": "informational", "evidence": {}},
+		], {"unobserved_geometry": "minimal_cohesive",
+			"stylistic_hypotheses": "non_blocking"})
 	var reference := ReferenceProfile.new({"sha256":
 		"872bce81ad35e2955751e95eadf3790a7049cae38a6261ed3f167c14136af2ab",
 		"width": 1536, "height": 1536, "description": "attached arcane aerostat reference"}, {
@@ -298,7 +336,8 @@ func build(p) -> Dictionary:
 			"anchors": "preferred", "appearance_slots": "required",
 			"proportions": "preferred"})
 	assert(intent.validate().is_empty() and brief.validate().is_empty() and
-		cohesion.validate().is_empty() and resolved.validate().is_empty() and
+		cohesion.validate().is_empty() and plausibility.validate().is_empty() and
+		resolved.validate().is_empty() and
 		binding.validate().is_empty() and reference.validate().is_empty())
 	var materials := {"canvas": StyleCompiler.slot("body.canvas"),
 		"brass": StyleCompiler.slot("structure.brass"),
@@ -359,13 +398,15 @@ func build(p) -> Dictionary:
 			"b": {"instance": "basket", "socket": id}, "radius": size * 0.0065,
 			"minimum_length": size * 0.30, "maximum_length": size * 0.60,
 			"material_slot": "rope.fiber", "profile_id": "aerostat.rope.v1",
-			"segments": 7, "paired_with": pair, "pair_tolerance": size * 0.002})
+			"segments": 7, "paired_with": pair, "pair_tolerance": size * 0.002,
+			"a_termination": _termination(size), "b_termination": _termination(size)})
 	suspension_members.append({"id": "lantern_drop",
 		"a": {"instance": "envelope", "socket": "lantern_anchor"},
 		"b": {"instance": "lantern", "socket": "top"}, "radius": size * 0.006,
 		"minimum_length": size * 0.06, "maximum_length": size * 0.32,
 		"material_slot": "structure.brass", "profile_id": "aerostat.lantern_drop.v1",
-		"segments": 7})
+		"segments": 7, "a_termination": _termination(size),
+		"b_termination": _termination(size)})
 	var suspension_plan := SuspensionPlan.new(solved.content_hash(),
 		interface_compilation.output_geometry_hash, suspension_members)
 	var suspension_compilation := SuspensionCompiler.compile(catalog, solved,
@@ -377,7 +418,9 @@ func build(p) -> Dictionary:
 	var stages := StageRunner.new("arcane_aerostat.segregated_pipeline_v1")
 	stages.record("intent", "arcane_aerostat.intent.v1", {}, intent)
 	stages.record("resolve_brief", "arcane_aerostat.brief.v1", {"asset_intent": intent.content_hash()}, brief)
-	stages.record("resolve_design", "arcane_aerostat.resolver.v1", {"construction_intent": intent.construction_hash(), "design_brief": brief.content_hash()}, resolved)
+	stages.record("resolve_plausibility", "arcane_aerostat.plausibility.v1",
+		{"design_brief": brief.content_hash()}, plausibility)
+	stages.record("resolve_design", "arcane_aerostat.resolver.v1", {"construction_intent": intent.construction_hash(), "design_brief": brief.content_hash(), "plausibility_contract": plausibility.content_hash()}, resolved)
 	stages.record("plan_assembly", "arcane_aerostat.rigid_plan.v1", {"resolved_design": resolved.content_hash()}, plan)
 	stages.record("solve_rigid", "polyforge.rigid.socket_assembly@1.0.0", {"assembly_plan": plan.content_hash()}, solved, solve_result.diagnostics)
 	stages.record("plan_interfaces", "arcane_aerostat.interface_plan.v1", {"solved_assembly": solved.content_hash(), "cohesion_contract": cohesion.content_hash()}, interface_plan)
@@ -394,11 +437,12 @@ func build(p) -> Dictionary:
 	tertiary_parts.append_array(asset.part_names_for_instance("lantern"))
 	tertiary_parts.append_array(asset.part_names_for_instance("suspension"))
 	return {"name": "arcane_aerostat", "category": "vehicle", "assembly": asset,
-		"triangle_budget": 7000, "topology_budget": {"rendered_triangles": 7000,
-			"unique_triangles": 6500}, "quality_profile": "runtime",
+		"triangle_budget": 7600, "topology_budget": {"rendered_triangles": 7600,
+			"unique_triangles": 7400}, "quality_profile": "runtime",
 		"require_surface_classification": true, "require_part_classification": true,
 		"contracts": {"asset_intent": intent.to_canonical_dict(),
 			"design_brief": brief.to_canonical_dict(), "resolved_design": resolved.to_canonical_dict(),
+			"plausibility_contract": plausibility.to_canonical_dict(),
 			"cohesion_contract": cohesion.to_canonical_dict(), "component_catalog": catalog.snapshot(),
 			"assembly_plan": plan.to_canonical_dict(), "solved_assembly": solved.to_canonical_dict(),
 			"interface_plan": interface_plan.to_canonical_dict(),

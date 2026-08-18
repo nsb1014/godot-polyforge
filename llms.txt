@@ -101,6 +101,10 @@ Godot before the build succeeds.
 - Measure endpoint overlap from emitted interface geometry. Point contact is not visual attachment.
 - Model suspension as a separate socket-to-socket plan after rigid interfaces. It may emit tension
   members and length evidence, but it must never move solved components or silently repair geometry.
+- Treat realism as domain-owned causal plausibility. Every supported mass must reach a declared
+  support source through evidence-bound relations, and structural edges need visible joint geometry.
+- Label reference claims as observed, functional inference, or stylistic hypothesis. Never promote
+  an occluded stylistic guess into a hard rule; prefer the minimal cohesive hidden completion.
 - Score mass hierarchy from the median normalized projected area across declared semantic views.
   Recipes own share bands and dominance ratios; do not install one universal aesthetic threshold.
 - Pin rigid motion in `MotionContract` and bind the compiled rig to the exact geometry and contract
@@ -139,6 +143,8 @@ Godot before the build succeeds.
   `quality/mass_hierarchy_validation.gd`: post-solve transitions and deterministic cohesion gates.
 - `core/suspension_plan.gd`, `build/suspension_compiler.gd`, and
   `quality/suspension_validation.gd`: isolated tension-member ownership and paired-length evidence.
+- `core/plausibility_contract.gd` and `quality/plausibility_validation.gd`: domain-owned causal
+  graphs, evidence authority, and deterministic support-path gates without a universal realism score.
 - `build/stage_runner.gd` and `build/style_compiler.gd`: isolated stages and enforced style boundary.
 - `quality/reference_validation.gd` and `quality/visual_evidence.gd`: reference and renderer evidence.
 - `core/attachments.gd`: sampled surface frames, child bindings, and attachment drift checks.

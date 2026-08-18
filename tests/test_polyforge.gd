@@ -30,6 +30,7 @@ const AssetIntent := preload("res://addons/polyforge/core/asset_intent.gd")
 const ResolvedDesign := preload("res://addons/polyforge/core/resolved_design.gd")
 const DesignBrief := preload("res://addons/polyforge/core/design_brief.gd")
 const CohesionContract := preload("res://addons/polyforge/core/cohesion_contract.gd")
+const PlausibilityContract := preload("res://addons/polyforge/core/plausibility_contract.gd")
 const InterfacePlan := preload("res://addons/polyforge/core/interface_plan.gd")
 const InterfaceCompilation := preload("res://addons/polyforge/core/interface_compilation.gd")
 const SuspensionPlan := preload("res://addons/polyforge/core/suspension_plan.gd")
@@ -62,6 +63,7 @@ const ReferenceValidation := preload("res://addons/polyforge/quality/reference_v
 const CohesionValidation := preload("res://addons/polyforge/quality/cohesion_validation.gd")
 const MassHierarchyValidation := preload("res://addons/polyforge/quality/mass_hierarchy_validation.gd")
 const SuspensionValidation := preload("res://addons/polyforge/quality/suspension_validation.gd")
+const PlausibilityValidation := preload("res://addons/polyforge/quality/plausibility_validation.gd")
 
 var failures := 0
 
@@ -171,6 +173,25 @@ func _initialize() -> void:
 			cohesion_contract.to_canonical_dict()).content_hash() ==
 			cohesion_contract.content_hash(),
 		"design and cohesion contracts round-trip as immutable canonical artifacts")
+	var plausibility_contract := PlausibilityContract.new(brief.content_hash(),
+		"test_suspension", [{"id": "source", "role": "support",
+			"support_source": true}, {"id": "payload", "role": "mass",
+				"requires_support": true}], [{"id": "support_edge", "from": "payload",
+				"to": "source", "kind": "hangs_from", "basis": "functional_inference",
+				"authority": "required", "evidence": {"suspension_members": ["cable"],
+					"require_terminations": true}}])
+	check(plausibility_contract.validate().is_empty() and
+		PlausibilityContract.from_canonical_dict(
+			plausibility_contract.to_canonical_dict()).content_hash() ==
+			plausibility_contract.content_hash(),
+		"causal plausibility contracts round-trip without promoting hypotheses")
+	var invalid_hypothesis := PlausibilityContract.new(brief.content_hash(), "test", [
+		{"id": "source", "role": "support", "support_source": true}], [{
+			"id": "invented_wrap", "from": "source", "to": "source",
+			"kind": "decorates", "basis": "stylistic_hypothesis",
+			"authority": "required", "evidence": {}}])
+	check(not invalid_hypothesis.validate().is_empty(),
+		"stylistic hypotheses cannot silently become required realism constraints")
 	var invalid_binding := AppearanceStyleBinding.new(intent_a.appearance_hash(), {
 		"body": {"affects_geometry": true, "color": Color.WHITE}})
 	check(not invalid_binding.validate().is_empty(),
@@ -782,13 +803,20 @@ func _initialize() -> void:
 		"reference relay records passing residual evidence for every socket connection")
 	var aerostat := AssetRecipe.load_file("res://examples/arcane_aerostat_recipe.gd")
 	var aerostat_validation := BuildPipeline.validate(aerostat)
-	check(aerostat_validation.ok and aerostat_validation.process.stages == 11 and
+	check(aerostat_validation.ok and aerostat_validation.process.stages == 12 and
 		aerostat_validation.suspension.ok and aerostat_validation.suspension.members == 5 and
+		aerostat_validation.plausibility.ok and
+		aerostat_validation.plausibility.required_support_nodes == 4 and
 		aerostat.contracts.suspension_plan.payload.input_geometry_hash ==
 			aerostat.contracts.interface_compilation.payload.output_geometry_hash and
 		aerostat.style_compilation.geometry_hash_after ==
 			aerostat.contracts.suspension_compilation.payload.output_geometry_hash,
 		"aerostat preserves rigid, interface, suspension, and style ownership through one hash chain")
+	var termination_count := 0
+	for member in aerostat.contracts.suspension_compilation.payload.members:
+		termination_count += member.get("terminations", {}).size()
+	check(termination_count == 10,
+		"every aerostat tension member terminates visibly at both causal endpoints")
 	var forged_suspension: Dictionary = aerostat.duplicate(true)
 	for evidence in forged_suspension.contracts.suspension_compilation.payload.members:
 		if str(evidence.id) == "rope_fl":
@@ -797,6 +825,26 @@ func _initialize() -> void:
 	check(not forged_suspension_result.ok and _has_prefix(
 		forged_suspension_result.failures, "SUSPENSION_PAIR_LENGTH_MISMATCH"),
 		"suspension validation rejects asymmetric paired load paths")
+	var floating_termination: Dictionary = aerostat.duplicate(true)
+	floating_termination.contracts.suspension_compilation.payload.members[0].terminations.a.host_overlap = 0.0
+	var floating_termination_result := SuspensionValidation.evaluate(floating_termination)
+	check(not floating_termination_result.ok and _has_prefix(
+		floating_termination_result.failures, "SUSPENSION_TERMINATION_INVALID"),
+		"suspension validation rejects visible hardware detached from its host")
+	var missing_load_path: Dictionary = aerostat.duplicate(true)
+	missing_load_path.contracts.plausibility_contract.payload.relations = []
+	var missing_load_path_result := PlausibilityValidation.evaluate(missing_load_path)
+	check(not missing_load_path_result.ok and _has_prefix(
+		missing_load_path_result.failures, "PLAUSIBILITY_SUPPORT_PATH_MISSING"),
+		"plausibility validation rejects masses without a causal support path")
+	var misbound_evidence: Dictionary = aerostat.duplicate(true)
+	for relation in misbound_evidence.contracts.plausibility_contract.payload.relations:
+		if str(relation.id) == "left_pod_mount":
+			relation.evidence.connection_id = "position_basket"
+	var misbound_evidence_result := PlausibilityValidation.evaluate(misbound_evidence)
+	check(not misbound_evidence_result.ok and _has_prefix(
+		misbound_evidence_result.failures, "PLAUSIBILITY_RELATION_EVIDENCE_MISSING"),
+		"plausibility evidence must bind the declared causal nodes, not merely exist")
 
 	var recipe := AssetRecipe.normalize({
 		"name": "named_test",
