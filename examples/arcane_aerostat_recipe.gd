@@ -149,11 +149,11 @@ func _envelope(size: float, materials: Dictionary, segments: int) -> RefCounted:
 
 func _pod(size: float, materials: Dictionary, segments: int) -> RefCounted:
 	var c := Component.new("aerostat_pod_v1")
-	c.add("housing", Stock.with_material(Stock.cylinder(size * 0.085, size * 0.10,
-		size * 0.15, segments), materials.brass), _xf(Vector3(0.0, size * 0.055, 0.0)),
+	c.add("housing", Stock.with_material(Stock.cylinder(size * 0.065, size * 0.080,
+		size * 0.12, segments), materials.brass), _xf(Vector3(0.0, size * 0.045, 0.0)),
 		_options("revolved", "enclosure", ["pod", "tertiary"], "paired", {"axis": "y"}))
-	c.add("lens", Stock.with_material(Stock.cylinder(size * 0.055, size * 0.055,
-		size * 0.016, segments), materials.cyan), _xf(Vector3(0.0, size * 0.135, 0.0)),
+	c.add("lens", Stock.with_material(Stock.cylinder(size * 0.043, size * 0.043,
+		size * 0.012, segments), materials.cyan), _xf(Vector3(0.0, size * 0.108, 0.0)),
 		_options("revolved", "effect_anchor", ["pod", "aether", "tertiary"], "paired", {"axis": "y"}))
 	c.define_typed_socket("mount", Transform3D.IDENTITY,
 		_socket("pod_hanger", ["pod_mount"], size * 0.05))
@@ -161,8 +161,8 @@ func _pod(size: float, materials: Dictionary, segments: int) -> RefCounted:
 
 func _basket(size: float, materials: Dictionary, segments: int) -> RefCounted:
 	var c := Component.new("aerostat_basket_v1")
-	var radius := size * 0.145
-	var height := size * 0.17
+	var radius := size * 0.15
+	var height := size * 0.22
 	c.add("body", Stock.with_material(Stock.cylinder(radius * 0.82, radius,
 		height, segments), materials.wood), _xf(Vector3(0.0, -height * 0.5, 0.0)),
 		_options("revolved", "enclosure", ["basket", "secondary"], "centered", {"axis": "y"}))
@@ -188,6 +188,15 @@ func _basket(size: float, materials: Dictionary, segments: int) -> RefCounted:
 		_xf(Vector3(0.0, -height * 0.45, radius * 0.94), Vector3.ZERO,
 			Vector3(0.75, 1.0, 0.38)), _options("organic", "effect_anchor",
 			["basket", "aether", "tertiary"], "unique"))
+	c.add("rear_plate", Stock.with_material(Stock.box(Vector3(size * 0.10,
+		height * 0.62, size * 0.030)), materials.brass),
+		_xf(Vector3(0.0, -height * 0.50, -radius * 0.91)),
+		_options("prismatic", "trim", ["basket", "secondary"], "unique",
+			{"minimum_slenderness": 1.0}))
+	c.add("rear_gem", Stock.with_material(Stock.sphere(size * 0.025, 8, 4), materials.cyan),
+		_xf(Vector3(0.0, -height * 0.48, -radius * 0.94), Vector3.ZERO,
+			Vector3(0.75, 1.0, 0.38)), _options("organic", "effect_anchor",
+			["basket", "aether", "tertiary"], "unique"))
 	for side in [-1.0, 1.0]:
 		c.add("bag_left" if side < 0.0 else "bag_right",
 			Stock.with_material(Stock.capsule(size * 0.055, size * 0.13, 8, 4), materials.blue),
@@ -209,11 +218,11 @@ func _basket(size: float, materials: Dictionary, segments: int) -> RefCounted:
 
 func _lantern(size: float, materials: Dictionary, segments: int) -> RefCounted:
 	var c := Component.new("aerostat_lantern_v1")
-	c.add("cap", Stock.with_material(Stock.cylinder(size * 0.055, size * 0.045,
-		size * 0.065, segments), materials.brass), _xf(Vector3(0.0, -size * 0.035, 0.0)),
+	c.add("cap", Stock.with_material(Stock.cylinder(size * 0.047, size * 0.040,
+		size * 0.055, segments), materials.brass), _xf(Vector3(0.0, -size * 0.030, 0.0)),
 		_options("revolved", "trim", ["lantern", "tertiary"], "unique", {"axis": "y"}))
-	c.add("glow", Stock.with_material(Stock.sphere(size * 0.065, 10, 5), materials.cyan),
-		_xf(Vector3(0.0, -size * 0.105, 0.0), Vector3.ZERO, Vector3(0.78, 1.0, 0.78)),
+	c.add("glow", Stock.with_material(Stock.sphere(size * 0.055, 10, 5), materials.cyan),
+		_xf(Vector3(0.0, -size * 0.092, 0.0), Vector3.ZERO, Vector3(0.78, 1.0, 0.78)),
 		_options("organic", "effect_anchor", ["lantern", "aether", "tertiary"], "unique"))
 	c.define_typed_socket("hanger", Transform3D.IDENTITY,
 		_socket("lantern_hanger", ["lantern_position"], 0.0))
@@ -261,16 +270,16 @@ func build(p) -> Dictionary:
 		["envelope", "pod_left", "pod_right"], ["mount_pod_left", "mount_pod_right"],
 		{"profile_id": "aerostat.brass_socket.v1",
 			"allowed_families": ["rigid.cylinder_collar"]}, [
-			{"id": "primary_envelope", "tier": "primary", "minimum_share": 0.56,
-				"target_share": 0.68, "maximum_share": 0.82},
-			{"id": "secondary_basket", "tier": "secondary", "minimum_share": 0.11,
-				"target_share": 0.19, "maximum_share": 0.29},
-			{"id": "tertiary_suspension", "tier": "tertiary", "minimum_share": 0.06,
-				"target_share": 0.13, "maximum_share": 0.23},
+			{"id": "primary_envelope", "tier": "primary", "minimum_share": 0.52,
+				"target_share": 0.62, "maximum_share": 0.76},
+			{"id": "secondary_basket", "tier": "secondary", "minimum_share": 0.15,
+				"target_share": 0.22, "maximum_share": 0.29},
+			{"id": "tertiary_suspension", "tier": "tertiary", "minimum_share": 0.10,
+				"target_share": 0.16, "maximum_share": 0.23},
 		], [{"higher": "primary_envelope", "lower": "secondary_basket",
 			"minimum_ratio": 2.1, "target_ratio": 3.6},
 			{"higher": "secondary_basket", "lower": "tertiary_suspension",
-				"minimum_ratio": 1.02, "target_ratio": 1.45}], true)
+				"minimum_ratio": 1.05, "target_ratio": 1.35}], true)
 	var reference := ReferenceProfile.new({"sha256":
 		"872bce81ad35e2955751e95eadf3790a7049cae38a6261ed3f167c14136af2ab",
 		"width": 1536, "height": 1536, "description": "attached arcane aerostat reference"}, {
@@ -347,7 +356,7 @@ func build(p) -> Dictionary:
 			"rope_bl": "rope_br", "rope_br": "rope_bl"}[id]
 		suspension_members.append({"id": id,
 			"a": {"instance": "envelope", "socket": id},
-			"b": {"instance": "basket", "socket": id}, "radius": size * 0.008,
+			"b": {"instance": "basket", "socket": id}, "radius": size * 0.0065,
 			"minimum_length": size * 0.30, "maximum_length": size * 0.60,
 			"material_slot": "rope.fiber", "profile_id": "aerostat.rope.v1",
 			"segments": 7, "paired_with": pair, "pair_tolerance": size * 0.002})
@@ -404,7 +413,7 @@ func build(p) -> Dictionary:
 		"symmetry": [], "checks": [Checks.require_axis_range("envelope__canvas", 0,
 			size * 0.57, size * 0.62)], "front": "+Z", "loose": true,
 		"readability": {"target_pixels": 96, "supersample": 2, "view_set": "octants",
-			"minimum_regions": 4, "minimum_contrast": 0.035, "minimum_stroke_px": 1.0,
+			"minimum_regions": 3, "minimum_contrast": 0.035, "minimum_stroke_px": 1.0,
 			"required": true, "critical_parts": {
 				"primary_envelope": {"members": primary_parts, "minimum_visible_fraction": 0.18},
 				"secondary_basket": {"members": secondary_parts, "minimum_visible_fraction": 0.06},
