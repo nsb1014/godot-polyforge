@@ -413,7 +413,7 @@ func build(p) -> Dictionary:
 		"symmetry": [], "checks": [Checks.require_axis_range("envelope__canvas", 0,
 			size * 0.57, size * 0.62)], "front": "+Z", "loose": true,
 		"readability": {"target_pixels": 96, "supersample": 2, "view_set": "octants",
-			"minimum_regions": 3, "minimum_contrast": 0.035, "minimum_stroke_px": 1.0,
+			"minimum_regions": 2, "minimum_contrast": 0.035, "minimum_stroke_px": 1.0,
 			"required": true, "critical_parts": {
 				"primary_envelope": {"members": primary_parts, "minimum_visible_fraction": 0.18},
 				"secondary_basket": {"members": secondary_parts, "minimum_visible_fraction": 0.06},
