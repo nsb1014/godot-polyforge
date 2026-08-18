@@ -4,6 +4,7 @@ extends RefCounted
 var parts: Array[Dictionary] = []
 var component_instances: Array[Dictionary] = []
 var sockets: Dictionary = {}
+var socket_contracts: Dictionary = {}
 var _frames: Array[Transform3D] = [Transform3D.IDENTITY]
 
 func current_frame() -> Transform3D:
@@ -46,6 +47,8 @@ func instance_component(instance_name: String, component,
 		component_instances.append(instance)
 	for socket_name in flattened.sockets:
 		sockets[socket_name] = flattened.sockets[socket_name]
+	for socket_name in flattened.socket_contracts:
+		socket_contracts[socket_name] = flattened.socket_contracts[socket_name]
 	var emitted: Array[Dictionary] = []
 	for part in flattened.parts:
 		var safe_path := str(part.component_path).replace("/", "__")
