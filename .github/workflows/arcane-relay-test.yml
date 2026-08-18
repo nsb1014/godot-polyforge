@@ -31,8 +31,19 @@ jobs:
 
       - name: Install virtual display and Godot runtime libraries
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
+          sudo sed -i \
+            's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' \
+            /etc/apt/apt-mirrors.txt
+          sudo timeout --kill-after=15s 180s apt-get \
+            -o Acquire::Retries=3 \
+            -o Acquire::http::Timeout=15 \
+            -o Acquire::https::Timeout=15 \
+            update
+          sudo timeout --kill-after=15s 180s apt-get \
+            -o Acquire::Retries=3 \
+            -o Acquire::http::Timeout=15 \
+            -o Acquire::https::Timeout=15 \
+            install -y --no-install-recommends \
             curl unzip xvfb libgl1 libx11-6 libxcursor1 libxinerama1 \
             libxrandr2 libxi6 libasound2t64 libpulse0
 
