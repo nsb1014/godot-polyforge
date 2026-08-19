@@ -6,6 +6,16 @@ extends RefCounted
 
 const Readability := preload("res://addons/polyforge/quality/readability.gd")
 const BACKGROUND := Color("d9dde3")
+## Match the bundled WebGL viewer's Lambert budget so turntable PNGs keep
+## authored albedo instead of filmic-lifting cream toward white:
+##   sh = 0.34 + 0.60*key + 0.16*fill, clamped at 1.15.
+## Godot has no equivalent shoulder; keep the coefficient sum at or below PEAK_ENERGY.
+const AMBIENT_ENERGY := 0.34
+const KEY_ENERGY := 0.60
+const FILL_ENERGY := 0.16
+const PEAK_ENERGY := 1.15
+const KEY_ROTATION_DEGREES := Vector3(-48.0, -32.0, 0.0)
+const FILL_ROTATION_DEGREES := Vector3(-20.0, 145.0, 0.0)
 
 static func _environment(background := BACKGROUND) -> WorldEnvironment:
 	var world := WorldEnvironment.new()
@@ -14,8 +24,8 @@ static func _environment(background := BACKGROUND) -> WorldEnvironment:
 	environment.background_color = background
 	environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	environment.ambient_light_color = Color.WHITE
-	environment.ambient_light_energy = 0.65
-	environment.tonemap_mode = Environment.TONE_MAPPER_FILMIC
+	environment.ambient_light_energy = AMBIENT_ENERGY
+	environment.tonemap_mode = Environment.TONE_MAPPER_LINEAR
 	world.environment = environment
 	return world
 
@@ -29,16 +39,20 @@ static func _fit_distance(bounds: AABB, fov_degrees: float) -> float:
 
 static func _add_studio(viewport: SubViewport, scene: Node3D,
 		background := BACKGROUND) -> Camera3D:
+	assert(AMBIENT_ENERGY + KEY_ENERGY + FILL_ENERGY <= PEAK_ENERGY,
+		"preview studio lighting must stay within the bundled viewer peak")
 	viewport.add_child(_environment(background))
 	viewport.add_child(scene)
 	var light := DirectionalLight3D.new()
-	light.rotation_degrees = Vector3(-48.0, -32.0, 0.0)
-	light.light_energy = 1.25
+	light.name = "key"
+	light.rotation_degrees = KEY_ROTATION_DEGREES
+	light.light_energy = KEY_ENERGY
 	light.shadow_enabled = true
 	viewport.add_child(light)
 	var fill := DirectionalLight3D.new()
-	fill.rotation_degrees = Vector3(-20.0, 145.0, 0.0)
-	fill.light_energy = 0.45
+	fill.name = "fill"
+	fill.rotation_degrees = FILL_ROTATION_DEGREES
+	fill.light_energy = FILL_ENERGY
 	viewport.add_child(fill)
 	var camera := Camera3D.new()
 	camera.fov = 28.0
@@ -127,9 +141,9 @@ static func _count_color(image: Image, color: Color, tolerance := 0.14) -> int:
 		for x in range(image.get_width()):
 			var pixel := image.get_pixel(x, y)
 			var sample := Vector3(pixel.r, pixel.g, pixel.b)
-			# ID materials are unshaded, but filmic tone mapping can still change their
-			# luminance. Compare chroma direction so a scaled lime remains lime while
-			# black blockers and the neutral studio background remain excluded.
+			# ID materials are unshaded, but renderer color-space conversion can still
+			# change luminance. Compare chroma direction so a scaled lime remains lime
+			# while black blockers and the neutral studio background remain excluded.
 			if sample.length() > 0.08 and sample.normalized().distance_to(target) <= tolerance:
 				count += 1
 	return count
