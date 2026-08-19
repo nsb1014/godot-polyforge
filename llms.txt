@@ -148,6 +148,7 @@ Godot before the build succeeds.
 - `build/stage_runner.gd` and `build/style_compiler.gd`: isolated stages and enforced style boundary.
 - `quality/reference_validation.gd` and `quality/visual_evidence.gd`: reference and renderer evidence.
 - `core/attachments.gd`: sampled surface frames, child bindings, and attachment drift checks.
+- `core/surface_decal.gd`: flush ellipsoid decals and feathered eye/lip/detail patches.
 - `quality/lint_core.gd`: structural geometry validation and budgets.
 - `quality/checks.gd`: named-part relationships and intersection checks.
 - `quality/readability.gd`: rendered play-size legibility metrics and category policy.
