@@ -3,10 +3,10 @@ extends SceneTree
 ##
 ## Build:
 ##   godot --path . --script res://addons/polyforge/cli/polyforge_cli.gd -- \
-##     build res://models/robot.gd --param height=3.2 --out res://dist --mode both
+##     build res://path/to/project_recipe.gd --param size=1.25 --out res://out --mode both
 ## Inspect:
 ##   godot --path . --script res://addons/polyforge/cli/polyforge_cli.gd -- \
-##     inspect res://dist/robot.glb
+##     inspect res://out/project_asset.glb
 
 const AssetRecipe := preload("res://addons/polyforge/core/asset_recipe.gd")
 const BuildPipeline := preload("res://addons/polyforge/build/build_pipeline.gd")
