@@ -1,163 +1,145 @@
 # Godot PolyForge — agent instructions
 
-PolyForge is a Godot 4 development-time asset compiler. Geometry is authored in GDScript,
-validated, previewed, and exported as ordinary GLB files. The addon does not need to ship
-with the game that consumes those files.
+PolyForge is a reusable Godot 4 procedural asset-generation addon. These instructions distinguish
+using PolyForge in another project from developing PolyForge itself. Do not confuse a temporary
+validation model with repository source.
 
-## Build an asset
+## First determine the task
 
-Read `examples/bronze_guardian_recipe.gd`, then create a project-owned recipe with:
+### Using PolyForge in a consuming project
+
+Create project-owned recipes, palettes, references, and outputs in that project. Load PolyForge from
+`res://addons/polyforge/` and call its public GDScript APIs. The consuming project decides its
+asset names, categories, materials, measurements, and output directories.
+
+### Developing or testing PolyForge itself
+
+Change only reusable addon code, generic documentation, or neutral tests requested by the user.
+Temporary recipes and generated output belong under `res://out/` and must remain untracked.
+
+A request to build, render, validate, inspect, compare, or test a model is not permission to commit
+that model, add it as an example, or open a PR for it.
+
+## Repository contribution boundary
+
+When working in the PolyForge repository:
+
+- Never commit subject-specific, branded, character, showcase, or reference-derived recipes.
+- Never commit generated GLB, glTF, OBJ, Blender, image, viewer, manifest, render, or contact-sheet
+  output.
+- Never add a permanent recipe merely to demonstrate or test a reusable change.
+- Never open or update a PR whose purpose is to add a generated model or visual recreation unless
+  the user explicitly requests that repository content.
+- Put disposable recipes and outputs under `out/`.
+- Use minimal synthetic geometry with neutral names such as `root`, `support`, `payload`,
+  `connector`, and `moving_link`.
+- Test one reusable behavior at a time. Do not preserve measurements, thresholds, hashes, names, or
+  topology derived from an unsuccessful visual experiment.
+- Before committing, inspect every changed path and remove temporary inputs and outputs.
+
+Appropriate PolyForge PR content includes reusable geometry operations, validators, exporters,
+contract types, deterministic fixes, neutral regression tests, and generic documentation.
+
+## Minimal project-owned recipe contract
+
+A consuming project may define:
 
 ```gdscript
 extends RefCounted
+
 const Assembly := preload("res://addons/polyforge/core/assembly.gd")
 const Parameters := preload("res://addons/polyforge/core/parameters.gd")
 const Stock := preload("res://addons/polyforge/core/stock.gd")
 
 func parameters() -> Dictionary:
-	return {"height": Parameters.scale(1.0, 0.5, 2.0, "m", "Canonical height")}
+	return {
+		"size": Parameters.scale(1.0, 0.5, 2.0, "m", "Overall size."),
+	}
 
 func build(p) -> Dictionary:
-	var height := p.value("height")
-	var asset := Assembly.new()
-	# asset.add("semantic_name", mesh, transform, {"tags": [...]})
+	var size: float = p.value("size")
+	var material := Stock.material("primary", Color("6f86a6"), 0.0, 0.75)
+	var assembly := Assembly.new()
+	assembly.add("root", Stock.with_material(
+		Stock.box(Vector3.ONE * size), material))
 	return {
-		"name": "my_asset",
+		"name": "project_asset",
 		"category": "prop",
-		"assembly": asset,
-		"triangle_budget": 4000,
-		"topology_budget": {"rendered_triangles": 4000, "unique_triangles": 3000},
-		"quality_profile": "runtime",
-		"checks": [],
-		"anchors": {},
+		"assembly": assembly,
+		"triangle_budget": 500,
+		"anchors": {"origin": Vector3.ZERO},
 		"front": "+Z",
 	}
 ```
 
-Compile it with Godot, not Node:
+This recipe belongs in the consuming project. When the same shape is needed only to test PolyForge,
+write it temporarily beneath `out/` instead.
+
+## Build and inspect
 
 ```bash
 godot --path . --script res://addons/polyforge/cli/polyforge_cli.gd -- \
-  build res://models/my_asset.gd --param height=1.4 --out res://dist --mode both
+  build res://path/to/project_recipe.gd --out res://out --mode both
+
+godot --path . --script res://addons/polyforge/cli/polyforge_cli.gd -- \
+  inspect res://out/project_asset.glb
 ```
 
-Outputs are GLB, manifest JSON, self-contained review HTML/JSON, and a multi-view PNG when
-the selected Godot renderer supports offscreen rendering. Every GLB is re-imported through
-Godot before the build succeeds.
+Use `--no-glb`, `--no-viewer`, `--no-preview`, and `--no-readability` for validation-only
+runs. Generated output is disposable unless the consuming project explicitly owns it.
 
-## Rules
+## General authoring rules
 
-- +Y is up. Declare `front` explicitly; bundled examples use +Z.
-- Give every independently meaningful part a stable semantic name.
-- Declare a small set of bounded primary measurements with `parameters()`; use
-  `Parameters.scale()` for the canonical uniform asset size.
-- Express each physical dimension against the closest measurement belonging to the same part.
-- Use `p.derive(name, source, factor)` for simple ratios and `p.computed()` for multi-source values.
-- Never type a coordinate that describes a relationship; calculate it from the geometry or
-  dimension it must meet.
-- Let the default base, per-parameter boundary, and pairwise-boundary sweep run before accepting
-  an asset.
-- Keep pairwise sweeps enabled so boundary interactions between two measurements are exercised.
-- Add `Checks.require_axis_size()` assertions proving important dimensions reached the mesh.
-- Derive anchors and attachment positions from the geometry they describe. Use
-  `Attachments.surface()` when a relationship lands on an emitted host surface, and return its
-  snapshot as `attachments` in the recipe.
-- Keep play-size readability enabled. Treat color regions, background contrast, and typical
-  feature thickness as measured outputs, not judgments made from the full-size preview. Keep
-  sweep readability enabled for final validation.
-- Use `--mode preserve` for movable/addressable parts, `merge` for static batching, or
-  `both` when authoring and runtime needs differ.
-- Add structural and semantic checks before increasing detail.
-- Classify new parts across construction, role, repetition, and motion with
-  `SurfaceTypes.classify()`; set `require_part_classification` for strict recipes.
-- Choose rounded and swept segmentation through `TopologyBudget` at the intended play size.
-  Report both rendered and unique triangle budgets; repeated components count toward rendered
-  cost while sharing unique mesh storage.
-- For moving assets, return a `Rig` with named bones, bindings, looped clips, and motion reports.
-  Bake mechanical motion from constraints and validate fixed lengths, loop closure, and static
-  keepout clearance across the complete sample set.
-- For new production recipes, use `AssetIntent` with separately hashed construction and appearance
-  payloads. Resolve only construction intent into `ResolvedDesign`.
-- Compile geometry with stable `StyleCompiler.slot()` materials, fingerprint it, and apply an
-  `AppearanceStyleBinding` afterward. Treat any geometry-hash change as a build failure.
-- Route a mechanism through a specialized `SolverStage`; never silently discard an unsupported
-  constraint or substitute a generic mathematical solver.
-- For modular rigid assets, author typed component sockets, emit a geometry-free `AssemblyPlan`,
-  and compile geometry only from a validated `SolvedAssembly`. Treat socket type, twist,
-  cardinality, loop closure, connectivity, and keepout failures as owned solver diagnostics.
-- Keep solver domains narrow. Rigid assemblies, mechanisms, and deformable characters share the
-  `SolverStage` invocation contract, not one generic internal solver.
-- Generate candidate plans without geometry. Reject or repair hard failures before ranking, and
-  rank only candidates that an independent domain validator accepts.
-- Express repairs as hash-bound `PlanPatch` artifacts. Enforce plan locks, whitelist operation
-  kinds, bound attempts, retain complete history, and rebuild downstream artifacts.
-- Never accept solver status as authority. Recompute hard constraints independently, select a plan,
-  then perform the authoritative solve again before geometry compilation.
-- Freeze semantic identity and mass roles in `DesignBrief`; keep them independent of exact image
-  coordinates. Put structural backbone, repeated junction grammar, and asset-specific mass-share
-  bands in `CohesionContract`.
-- Add rigid transition geometry only through an `InterfacePlan` bound to the solved-assembly hash.
-  Interface compilation may add collars, sleeves, or brackets, but must not move components.
-- Measure endpoint overlap from emitted interface geometry. Point contact is not visual attachment.
-- Model suspension as a separate socket-to-socket plan after rigid interfaces. It may emit tension
-  members and length evidence, but it must never move solved components or silently repair geometry.
-- Treat realism as domain-owned causal plausibility. Every supported mass must reach a declared
-  support source through evidence-bound relations, and structural edges need visible joint geometry.
-- Label reference claims as observed, functional inference, or stylistic hypothesis. Never promote
-  an occluded stylistic guess into a hard rule; prefer the minimal cohesive hidden completion.
-- Score mass hierarchy from the median normalized projected area across declared semantic views.
-  Recipes own share bands and dominance ratios; do not install one universal aesthetic threshold.
-- Pin rigid motion in `MotionContract` and bind the compiled rig to the exact geometry and contract
-  hashes it consumed.
-- Record stage input/output hashes with `StageRunner`. The runner owns ordering and provenance,
-  never geometry, style, solver, rig, repair, or validation logic.
-- When a reference image exists, identify it by SHA-256 and classify each observation as required,
-  preferred, or informational in `ReferenceProfile`. Only required identity may fail the build;
-  preferred coordinate and proportion drift remains evidence.
-- Compare normalized semantic evidence across renderers, not pixels. Keep beauty baselines scoped
-  to one pinned Godot/renderer environment.
-- Declare intentional intersections with `Assembly.allow_overlap()` before enabling
-  `noclip` in the recipe.
-- Keep palettes, categories, density profiles, and output directories project-owned.
-- Inspect all eight octant views. A correct canonical view does not prove the back and sides exist.
-- Do not generate procedural geometry at game startup. Import the compiled GLB.
+- +Y is up. Declare the front axis explicitly.
+- Use project-owned parameters for primary measurements.
+- Derive dependent dimensions through `Parameters` so provenance is recorded.
+- Preserve semantic part names in `Assembly`.
+- Reuse `Component` definitions when parts genuinely share construction.
+- Use typed sockets and a solved assembly for constrained rigid placement.
+- Keep construction, appearance, motion, and validation ownership separate.
+- Bind appearance after geometry generation and verify that the geometry hash is unchanged.
+- Declare budgets and validation policy in the consuming recipe rather than as universal aesthetics.
+- Treat reference profiles as project-owned evidence, not as construction authority.
+- Make repairs explicit, bounded, and hash-linked.
+- Prefer deterministic operations and verify repeated output.
 
-## Useful modules
+## Testing reusable changes
 
-- `core/stock.gd`: named-recipe-friendly Godot primitive factories.
-- `core/mesh.gd`: lathes, extrusions, sweeps, heightfields, painting, and tagged surfaces.
-- `core/assembly.gd`: names, frames, transforms, overlap declarations, and merging.
-- `core/topology_budget.gd`: adaptive segment selection and rendered/unique triangle policies.
-- `core/rig.gd` and `core/animation.gd`: skeleton, skin binding, and clip authoring data.
-- `core/mechanical_constraints.gd`: four-bar sampling and motion-clearance validation.
-- `core/canonical_artifact.gd` and `core/asset_intent.gd`: typed canonical IR and split hashes.
-- `core/solver_stage.gd`, `core/four_bar_solver.gd`, and `core/rigid_assembly_solver.gd`: shared
-  invocation contract with domain-specific math and diagnostics.
-- `core/assembly_plan.gd`, `core/solved_assembly.gd`, and `build/assembly_compiler.gd`: isolated
-  planning, solving, and geometry ownership for modular rigid assets.
-- `core/plan_patch.gd`, `build/candidate_repair_stage.gd`, and `build/candidate_selector.gd`:
-  explicit bounded repair, independent hard gates, and deterministic valid-only ranking.
-- `core/design_brief.gd`, `core/cohesion_contract.gd`, and `core/interface_plan.gd`: semantic
-  hierarchy, assembly cohesion, and connection-local geometry ownership.
-- `build/rigid_interface_compiler.gd`, `quality/cohesion_validation.gd`, and
-  `quality/mass_hierarchy_validation.gd`: post-solve transitions and deterministic cohesion gates.
-- `core/suspension_plan.gd`, `build/suspension_compiler.gd`, and
-  `quality/suspension_validation.gd`: isolated tension-member ownership and paired-length evidence.
-- `core/plausibility_contract.gd` and `quality/plausibility_validation.gd`: domain-owned causal
-  graphs, evidence authority, and deterministic support-path gates without a universal realism score.
-- `build/stage_runner.gd` and `build/style_compiler.gd`: isolated stages and enforced style boundary.
-- `quality/reference_validation.gd` and `quality/visual_evidence.gd`: reference and renderer evidence.
-- `core/attachments.gd`: sampled surface frames, child bindings, and attachment drift checks.
-- `core/surface_decal.gd`: flush ellipsoid decals and feathered eye/lip/detail patches.
-- `quality/lint_core.gd`: structural geometry validation and budgets.
-- `quality/checks.gd`: named-part relationships and intersection checks.
-- `quality/readability.gd`: rendered play-size legibility metrics and category policy.
-- `exporters/gltf_export.gd`: preserved/merged GLB and Godot round-trip inspection.
-- `exporters/manifest_export.gd`: bounds, anchors, part names, materials, and outputs.
+For addon development, prefer direct neutral unit cases:
 
-Inspect an existing file:
+- primitive or polygon geometry for mesh operations;
+- `root` and `connector` components for socket solving;
+- `support` and `payload` nodes for causal validation;
+- a minimal moving link for rig or animation checks;
+- a runtime-created recipe under `out/` for CLI and GLB round-trip smoke tests.
+
+Do not use a recognizable finished asset as a regression baseline. A green structural test does not
+prove visual quality, and a failed visual experiment must not become a recommended reference.
+
+Run:
 
 ```bash
-godot --path . --script res://addons/polyforge/cli/polyforge_cli.gd -- \
-  inspect res://dist/my_asset.glb
+godot --headless --path . --script res://tests/test_polyforge.gd
 ```
+
+The repository workflow also creates a temporary generic recipe under `out/`, performs a parameter
+sweep, exports both GLB modes, imports them again, and discards the results.
+
+## Public module guide
+
+- `core/mesh.gd`: polygon construction and ArrayMesh emission.
+- `core/stock.gd`: primitive and material factories.
+- `core/assembly.gd`: named parts and component instances.
+- `core/component.gd`: reusable local-space definitions and sockets.
+- `core/parameters.gd`: schemas, derived measurements, and sweeps.
+- `core/attachments.gd`: sampled surface frames and drift validation.
+- `core/surface_attach.gd`: closest-surface placement.
+- `core/surface_decal.gd`: ellipsoid-conforming decals and shallow patches.
+- `core/topology_budget.gd`: deterministic projected-size topology.
+- `core/rig.gd` and `core/animation.gd`: rig and clip contracts.
+- `build/build_pipeline.gd`: validation and coordinated production output.
+- `quality/`: structural, relational, process, and readability validation.
+- `exporters/`: GLB, manifest, preview, and viewer output.
+
+Keep project-specific catalogs, references, recipes, palettes, and output policy outside this
+repository.

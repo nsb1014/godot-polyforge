@@ -814,148 +814,98 @@ func _initialize() -> void:
 	check(dimension_cases.size() == 9 and dimension_cases[-1].varied.size() == 2,
 		"parameter sweep covers individual bounds and pairwise boundary interactions")
 
-	var guardian := AssetRecipe.load_file("res://examples/bronze_guardian_recipe.gd",
-		{"height": 2.4, "bulk": 1.25})
-	var guardian_validation := BuildPipeline.validate(guardian)
-	check(guardian_validation.failures.is_empty(),
-		"parameterized guardian validates at a non-default measurement combination")
-	var guardian_sweep := BuildPipeline.validate_sweep(AssetRecipe.load_sweep(
-		"res://examples/bronze_guardian_recipe.gd"))
-	check(guardian_sweep.ok and guardian_sweep.records.size() == 9,
-		"parameter sweep validates Guardian single and pairwise boundary combinations")
-	var vapor_derrick := AssetRecipe.load_file("res://examples/arcane_pumpjack_recipe.gd")
-	var vapor_validation := BuildPipeline.validate(vapor_derrick)
-	check(vapor_validation.ok and vapor_validation.process.stages == 6 and
-		vapor_validation.reference.available and vapor_validation.reference.ok,
-		"vapor derrick completes the staged process and reference-image semantic gate")
-	check(vapor_validation.reference.reference_image.sha256 ==
-		"e90f854563b3f8c19d7f30c6b67d1923ecb5727754a76b5fe68e2341ce8d5490" and
-		vapor_validation.reference.measurements.size() >= 18,
-		"reference evidence is pinned to the supplied image and reports measured semantics")
-	var relaxed_reference := vapor_derrick.duplicate(true)
-	relaxed_reference.anchors.boom_pivot = Vector3(999.0, 999.0, 999.0)
-	var relaxed_validation := BuildPipeline.validate(relaxed_reference)
-	check(relaxed_validation.ok and relaxed_validation.reference.ok and
-		not relaxed_validation.reference.warnings.is_empty(),
-		"preferred reference placement reports drift without overriding asset validity")
 	var required_reference := ReferenceValidation.evaluate({
 		"assembly": component_asset, "anchors": {}, "contracts": {},
 		"reference_profile": {"payload": {
-			"image": {"sha256": "required-test"},
+			"image": {"sha256": "synthetic-reference"},
 			"semantic_groups": {"missing_signature": {"selector": {
 				"names": ["does_not_exist"]}, "minimum": 1, "policy": "required"}},
 			"anchors": {}, "required_appearance_slots": [], "proportions": [],
 			"policies": {"semantic_groups": "required"}}}})
 	check(not required_reference.ok and required_reference.failures.size() == 1,
-		"required reference identity remains a hard semantic gate")
-	check(vapor_derrick.style_compilation.geometry_hash_before ==
-		vapor_derrick.style_compilation.geometry_hash_after and
-		vapor_derrick.rig.provenance.geometry_hash ==
-		vapor_derrick.style_compilation.geometry_hash_after,
-		"style and rig stages enforce geometry ownership through matching hashes")
-	var arcane_relay := AssetRecipe.load_file("res://examples/arcane_relay_recipe.gd")
-	var relay_validation := BuildPipeline.validate(arcane_relay)
-	check(relay_validation.ok and relay_validation.process.stages == 12 and
-		arcane_relay.contracts.has("assembly_plan") and
-		arcane_relay.contracts.has("solved_assembly") and
-		arcane_relay.contracts.has("cohesion_contract") and
-		arcane_relay.contracts.has("interface_compilation"),
-		"static relay completes semantic brief, solve, interface, geometry, and style stages")
-	check(arcane_relay.contracts.candidate_selection.payload.selected_candidate_id ==
-		"baseline" and arcane_relay.contracts.candidate_repair_report.payload.candidates.size() == 2,
-		"relay hard-gates two candidates and prefers the valid zero-repair baseline")
-	var tampered_relay: Dictionary = arcane_relay.duplicate(true)
-	tampered_relay.contracts.candidate_selection.payload.selected_plan_hash = "tampered"
-	var tampered_process := ProcessValidation.evaluate(tampered_relay)
-	check(not tampered_process.ok and tampered_process.failures.has(
-		"PROCESS_SELECTION_PLAN_HASH_MISMATCH"),
-		"process ledger rejects a candidate selection detached from its chosen plan")
-	var reordered_relay: Dictionary = arcane_relay.duplicate(true)
-	var stage_swap = reordered_relay.process.stages[2]
-	reordered_relay.process.stages[2] = reordered_relay.process.stages[3]
-	reordered_relay.process.stages[3] = stage_swap
-	reordered_relay.process.erase("pipeline_hash")
-	reordered_relay.process["pipeline_hash"] = CanonicalArtifact.hash_value(
-		reordered_relay.process)
-	var reordered_process := ProcessValidation.evaluate(reordered_relay)
-	check(not reordered_process.ok and reordered_process.failures.has(
-		"PROCESS_CANDIDATE_STAGE_ORDER_INVALID"),
-		"process ledger rejects reordered proposal and repair ownership stages")
-	check(arcane_relay.contracts.solved_assembly.payload.plan_hash ==
-		CanonicalArtifact.hash_value(arcane_relay.contracts.assembly_plan) and
-		arcane_relay.style_compilation.geometry_hash_before ==
-		arcane_relay.style_compilation.geometry_hash_after,
-		"relay provenance binds geometry to the accepted plan while style stays non-geometric")
-	check(relay_validation.cohesion.ok and relay_validation.cohesion.available and
-		relay_validation.cohesion.measurements.size() == 5 and
-		arcane_relay.contracts.interface_plan.payload.solved_assembly_hash ==
-			CanonicalArtifact.hash_value(arcane_relay.contracts.solved_assembly) and
-		arcane_relay.contracts.interface_compilation.payload.base_geometry_hash !=
-			arcane_relay.contracts.interface_compilation.payload.output_geometry_hash and
-		arcane_relay.style_compilation.geometry_hash_after ==
-			arcane_relay.contracts.interface_compilation.payload.output_geometry_hash,
-		"relay adds measured junction geometry without reopening the solved assembly")
-	var forged_cohesion: Dictionary = arcane_relay.duplicate(true)
-	forged_cohesion.contracts.interface_compilation.payload.connections[0].a_overlap = 0.0
-	var forged_result := CohesionValidation.evaluate(forged_cohesion)
-	check(not forged_result.ok and _has_prefix(forged_result.failures,
+		"required semantic evidence remains a hard validation gate")
+
+	var cohesion_geometry = AssemblyCompiler.compile(rigid_catalog, rigid_artifact).assembly
+	var cohesion_base_hash := GeometryFingerprint.assembly_hash(cohesion_geometry)
+	cohesion_geometry.add("test_interface", Stock.with_material(
+		Stock.box(Vector3(0.2, 0.2, 0.2)), _material("test_interface")),
+		Transform3D(Basis.IDENTITY, Vector3(0.0, 0.0, 0.0)))
+	var neutral_interface_plan := InterfacePlan.new(rigid_artifact.content_hash(),
+		cohesion_contract.content_hash(), [{
+			"connection_id": "left_closure", "family": "rigid.box_collar",
+			"profile_id": "test.band.v1", "material_slot": "test.interface",
+			"minimum_endpoint_overlap": 0.1, "size": Vector3(0.2, 0.2, 0.2)}])
+	var neutral_interface_compilation := InterfaceCompilation.new(
+		rigid_artifact.content_hash(), neutral_interface_plan.content_hash(),
+		cohesion_base_hash, GeometryFingerprint.assembly_hash(cohesion_geometry), [{
+			"connection_id": "left_closure", "profile_id": "test.band.v1",
+			"part_name": "test_interface", "a_overlap": 0.5, "b_overlap": 0.5}])
+	var cohesion_spec := {
+		"assembly": cohesion_geometry,
+		"contracts": {
+			"design_brief": brief.to_canonical_dict(),
+			"cohesion_contract": cohesion_contract.to_canonical_dict(),
+			"interface_plan": neutral_interface_plan.to_canonical_dict(),
+			"interface_compilation": neutral_interface_compilation.to_canonical_dict(),
+			"solved_assembly": rigid_artifact.to_canonical_dict(),
+		},
+	}
+	var neutral_cohesion := CohesionValidation.evaluate(cohesion_spec)
+	check(neutral_cohesion.ok and neutral_cohesion.measurements.size() == 1,
+		"cohesion validation accepts a generic connected interface with measured overlap")
+	var low_overlap_spec: Dictionary = cohesion_spec.duplicate(true)
+	low_overlap_spec.contracts.interface_compilation.payload.connections[0].a_overlap = 0.0
+	var low_overlap := CohesionValidation.evaluate(low_overlap_spec)
+	check(not low_overlap.ok and _has_prefix(low_overlap.failures,
 		"COHESION_ENDPOINT_OVERLAP_FAILED"),
-		"cohesion rejects a nominal socket connection reduced to point contact")
-	var forged_family: Dictionary = arcane_relay.duplicate(true)
-	forged_family.contracts.interface_plan.payload.treatments[0].family = \
-		"rigid.unapproved_transition"
-	var forged_family_result := CohesionValidation.evaluate(forged_family)
-	check(not forged_family_result.ok and _has_prefix(forged_family_result.failures,
-		"COHESION_INTERFACE_FAMILY_NOT_ALLOWED"),
-		"cohesion rejects interface geometry outside the brief-owned grammar")
-	var relay_residuals: Array = arcane_relay.contracts.solved_assembly.payload.residuals
-	check(relay_residuals.size() == 5 and relay_residuals.all(
-		func(residual): return bool(residual.get("ok", false))),
-		"reference relay records passing residual evidence for every socket connection")
-	var aerostat := AssetRecipe.load_file("res://examples/arcane_aerostat_recipe.gd")
-	var aerostat_validation := BuildPipeline.validate(aerostat)
-	check(aerostat_validation.ok and aerostat_validation.process.stages == 12 and
-		aerostat_validation.suspension.ok and aerostat_validation.suspension.members == 5 and
-		aerostat_validation.plausibility.ok and
-		aerostat_validation.plausibility.required_support_nodes == 4 and
-		aerostat.contracts.suspension_plan.payload.input_geometry_hash ==
-			aerostat.contracts.interface_compilation.payload.output_geometry_hash and
-		aerostat.style_compilation.geometry_hash_after ==
-			aerostat.contracts.suspension_compilation.payload.output_geometry_hash,
-		"aerostat preserves rigid, interface, suspension, and style ownership through one hash chain")
-	var termination_count := 0
-	for member in aerostat.contracts.suspension_compilation.payload.members:
-		termination_count += member.get("terminations", {}).size()
-	check(termination_count == 10,
-		"every aerostat tension member terminates visibly at both causal endpoints")
-	var forged_suspension: Dictionary = aerostat.duplicate(true)
-	for evidence in forged_suspension.contracts.suspension_compilation.payload.members:
-		if str(evidence.id) == "rope_fl":
-			evidence.length += 0.5
-	var forged_suspension_result := SuspensionValidation.evaluate(forged_suspension)
-	check(not forged_suspension_result.ok and _has_prefix(
-		forged_suspension_result.failures, "SUSPENSION_PAIR_LENGTH_MISMATCH"),
-		"suspension validation rejects asymmetric paired load paths")
-	var floating_termination: Dictionary = aerostat.duplicate(true)
-	floating_termination.contracts.suspension_compilation.payload.members[0].terminations.a.host_overlap = 0.0
-	var floating_termination_result := SuspensionValidation.evaluate(floating_termination)
-	check(not floating_termination_result.ok and _has_prefix(
-		floating_termination_result.failures, "SUSPENSION_TERMINATION_INVALID"),
-		"suspension validation rejects visible hardware detached from its host")
-	var missing_load_path: Dictionary = aerostat.duplicate(true)
-	missing_load_path.contracts.plausibility_contract.payload.relations = []
-	var missing_load_path_result := PlausibilityValidation.evaluate(missing_load_path)
-	check(not missing_load_path_result.ok and _has_prefix(
-		missing_load_path_result.failures, "PLAUSIBILITY_SUPPORT_PATH_MISSING"),
-		"plausibility validation rejects masses without a causal support path")
-	var misbound_evidence: Dictionary = aerostat.duplicate(true)
-	for relation in misbound_evidence.contracts.plausibility_contract.payload.relations:
-		if str(relation.id) == "left_pod_mount":
-			relation.evidence.connection_id = "position_basket"
-	var misbound_evidence_result := PlausibilityValidation.evaluate(misbound_evidence)
-	check(not misbound_evidence_result.ok and _has_prefix(
-		misbound_evidence_result.failures, "PLAUSIBILITY_RELATION_EVIDENCE_MISSING"),
-		"plausibility evidence must bind the declared causal nodes, not merely exist")
+		"cohesion validation rejects insufficient generic interface overlap")
+
+	var suspension_spec := {
+		"assembly": suspension_result.assembly,
+		"contracts": {
+			"solved_assembly": rigid_artifact.to_canonical_dict(),
+			"suspension_plan": suspension_plan.to_canonical_dict(),
+			"suspension_compilation": suspension_result.artifact.to_canonical_dict(),
+		},
+	}
+	var neutral_suspension := SuspensionValidation.evaluate(suspension_spec)
+	check(neutral_suspension.ok and neutral_suspension.members == 1,
+		"suspension validation accepts a generic socket-to-socket tension member")
+	var bad_length_spec: Dictionary = suspension_spec.duplicate(true)
+	bad_length_spec.contracts.suspension_compilation.payload.members[0].length = 99.0
+	var bad_length := SuspensionValidation.evaluate(bad_length_spec)
+	check(not bad_length.ok and _has_prefix(bad_length.failures,
+		"SUSPENSION_LENGTH_OUT_OF_RANGE"),
+		"suspension validation rejects a generic member outside its declared range")
+
+	var neutral_plausibility_contract := PlausibilityContract.new(brief.content_hash(),
+		"generic_support_test", [
+			{"id": "root", "role": "support", "support_source": true},
+			{"id": "bridge", "role": "mass", "requires_support": true},
+		], [{
+			"id": "bridge_mount", "from": "bridge", "to": "root",
+			"kind": "mounted_to", "basis": "functional_inference",
+			"authority": "required", "evidence": {
+				"connection_id": "left_closure"}}])
+	var plausibility_spec := {"contracts": {
+		"design_brief": brief.to_canonical_dict(),
+		"plausibility_contract": neutral_plausibility_contract.to_canonical_dict(),
+		"solved_assembly": rigid_artifact.to_canonical_dict(),
+	}}
+	var neutral_plausibility := PlausibilityValidation.evaluate(plausibility_spec)
+	check(neutral_plausibility.ok and neutral_plausibility.required_support_nodes == 1,
+		"plausibility validation accepts a generic evidenced support path")
+	var missing_path_spec: Dictionary = plausibility_spec.duplicate(true)
+	missing_path_spec.contracts.plausibility_contract.payload.relations = []
+	var missing_path := PlausibilityValidation.evaluate(missing_path_spec)
+	check(not missing_path.ok and _has_prefix(missing_path.failures,
+		"PLAUSIBILITY_SUPPORT_PATH_MISSING"),
+		"plausibility validation rejects a generic mass without a support path")
+
+	var missing_process := ProcessValidation.evaluate({})
+	check(not missing_process.ok and missing_process.failures.has(
+		"PROCESS_MISSING_STAGE_LEDGER"),
+		"process validation fails closed when no stage ledger is supplied")
 
 	var recipe := AssetRecipe.normalize({
 		"name": "named_test",
