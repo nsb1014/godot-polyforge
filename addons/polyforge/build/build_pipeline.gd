@@ -23,7 +23,7 @@ const ViewerExport := preload("res://addons/polyforge/exporters/viewer_export.gd
 
 static func default_options() -> Dictionary:
 	return {
-		"out_dir": "res://dist",
+		"out_dir": "res://out",
 		"mode": "preserve",
 		"write_glb": true,
 		"write_viewer": true,

@@ -1,5 +1,5 @@
 ; Engine configuration file.
-; Standalone test and example project for the PolyForge addon.
+; Standalone test harness for the PolyForge addon.
 
 config_version=5
 
