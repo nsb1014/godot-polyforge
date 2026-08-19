@@ -1,0 +1,165 @@
+name: PolyForge generic test
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: polyforge-generic-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  repository-hygiene:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Reject committed model and generated output
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess
+          import sys
+
+          tracked = subprocess.check_output(
+              ["git", "ls-files"], text=True).splitlines()
+          forbidden_extensions = {
+              ".blend", ".exr", ".fbx", ".gif", ".glb", ".gltf", ".hdr",
+              ".jpeg", ".jpg", ".obj", ".png", ".webp",
+          }
+          failures = []
+          for raw in tracked:
+              path = Path(raw)
+              normalized = raw.replace("\\", "/")
+              if normalized.startswith(("examples/", "out/", "dist/", "renders/", "artifacts/")):
+                  failures.append(f"forbidden repository path: {raw}")
+              if path.suffix.lower() in forbidden_extensions:
+                  failures.append(f"generated/model asset extension: {raw}")
+              if path.name.endswith("_recipe.gd") and path.name != "asset_recipe.gd":
+                  failures.append(f"project recipe committed to framework repository: {raw}")
+              if path.name.endswith((".manifest.json", "_viewer.json", "_viewer.html")):
+                  failures.append(f"generated review output: {raw}")
+
+          if failures:
+              print("\n".join(failures))
+              sys.exit(1)
+          print(f"Repository hygiene passed for {len(tracked)} tracked files.")
+          PY
+
+  test:
+    needs: repository-hygiene
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      GODOT_VERSION: "4.4.1"
+      GODOT_BIN: ${{ github.workspace }}/.godot-bin/godot
+      LIBGL_ALWAYS_SOFTWARE: "1"
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install Godot runtime libraries
+        run: |
+          sudo sed -i \
+            's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' \
+            /etc/apt/apt-mirrors.txt
+          sudo timeout --kill-after=15s 180s apt-get \
+            -o Acquire::Retries=3 \
+            -o Acquire::http::Timeout=15 \
+            -o Acquire::https::Timeout=15 \
+            update
+          sudo timeout --kill-after=15s 180s apt-get \
+            -o Acquire::Retries=3 \
+            -o Acquire::http::Timeout=15 \
+            -o Acquire::https::Timeout=15 \
+            install -y --no-install-recommends \
+            curl unzip libgl1 libx11-6 libxcursor1 libxinerama1 \
+            libxrandr2 libxi6 libasound2t64 libpulse0
+
+      - name: Install pinned Godot editor
+        run: |
+          mkdir -p "$(dirname "$GODOT_BIN")"
+          curl --fail --location --retry 3 \
+            "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip" \
+            --output /tmp/godot.zip
+          unzip -q /tmp/godot.zip -d "$(dirname "$GODOT_BIN")"
+          mv "$(dirname "$GODOT_BIN")/Godot_v${GODOT_VERSION}-stable_linux.x86_64" "$GODOT_BIN"
+          chmod +x "$GODOT_BIN"
+          "$GODOT_BIN" --version
+
+      - name: Run synthetic unit tests
+        run: |
+          timeout --kill-after=15s 180s "$GODOT_BIN" --headless --path . \
+            --script res://tests/test_polyforge.gd
+
+      - name: Create temporary generic recipe
+        run: |
+          mkdir -p out
+          cat > out/synthetic_fixture.gd <<'GDSCRIPT'
+          extends RefCounted
+
+          const Assembly := preload("res://addons/polyforge/core/assembly.gd")
+          const Parameters := preload("res://addons/polyforge/core/parameters.gd")
+          const Stock := preload("res://addons/polyforge/core/stock.gd")
+
+          func parameters() -> Dictionary:
+              return {
+                  "size": Parameters.scale(1.0, 0.75, 1.25, "m",
+                      "Synthetic fixture size."),
+              }
+
+          func build(p) -> Dictionary:
+              var size: float = p.value("size")
+              var material := Stock.material(
+                  "fixture_primary", Color("6f86a6"), 0.0, 0.75)
+              var assembly := Assembly.new()
+              assembly.add("root", Stock.with_material(
+                  Stock.box(Vector3(size, size * 0.5, size * 0.75)), material))
+              return {
+                  "name": "synthetic_fixture",
+                  "category": "test_fixture",
+                  "assembly": assembly,
+                  "triangle_budget": 100,
+                  "anchors": {"origin": Vector3.ZERO},
+                  "front": "+Z",
+              }
+          GDSCRIPT
+
+      - name: Validate parameter sweep
+        run: |
+          timeout --kill-after=15s 180s "$GODOT_BIN" --headless --path . \
+            --script res://addons/polyforge/cli/polyforge_cli.gd -- \
+            build res://out/synthetic_fixture.gd \
+            --out res://out/sweep --no-glb --no-viewer --no-preview --no-readability
+
+      - name: Export both GLB modes
+        run: |
+          timeout --kill-after=15s 180s "$GODOT_BIN" --headless --path . \
+            --script res://addons/polyforge/cli/polyforge_cli.gd -- \
+            build res://out/synthetic_fixture.gd \
+            --out res://out/build --mode both --no-sweep \
+            --no-viewer --no-preview --no-readability
+          test -f out/build/synthetic_fixture.glb
+          test -f out/build/synthetic_fixture_merged.glb
+          test -f out/build/synthetic_fixture.manifest.json
+
+      - name: Inspect exported GLBs
+        run: |
+          timeout --kill-after=15s 120s "$GODOT_BIN" --headless --path . \
+            --script res://addons/polyforge/cli/polyforge_cli.gd -- \
+            inspect res://out/build/synthetic_fixture.glb
+          timeout --kill-after=15s 120s "$GODOT_BIN" --headless --path . \
+            --script res://addons/polyforge/cli/polyforge_cli.gd -- \
+            inspect res://out/build/synthetic_fixture_merged.glb
+
+      - name: Confirm outputs remain ignored
+        run: |
+          test -z "$(git status --short --untracked-files=all | grep -E '(^| )out/' || true)"
