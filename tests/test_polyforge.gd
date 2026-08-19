@@ -134,39 +134,116 @@ func _candidate(report, id: String) -> Dictionary:
 			return candidate
 	return {}
 
+func _ellipsoid_surface_z(center: Vector3, radii: Vector3, point: Vector2) -> float:
+	var nx := (point.x - center.x) / radii.x
+	var ny := (point.y - center.y) / radii.y
+	var radial := nx * nx + ny * ny
+	if radial >= 1.0:
+		return -INF
+	return center.z + radii.z * sqrt(maxf(0.0, 1.0 - radial))
+
+func _mesh_clears_ellipsoid(mesh: ArrayMesh, center: Vector3, radii: Vector3,
+		tolerance := 0.00001) -> bool:
+	var arrays := mesh.surface_get_arrays(0)
+	var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+	var indices: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
+	for index in range(0, indices.size(), 3):
+		var a := vertices[indices[index]]
+		var b := vertices[indices[index + 1]]
+		var c := vertices[indices[index + 2]]
+		var samples := [(a + b) * 0.5, (b + c) * 0.5, (c + a) * 0.5,
+			(a + b + c) / 3.0]
+		for sample in samples:
+			var surface_z := _ellipsoid_surface_z(center, radii,
+				Vector2(sample.x, sample.y))
+			if sample.z + tolerance < surface_z:
+				return false
+	return true
+
+func _mesh_has_degenerate_triangles(mesh: ArrayMesh,
+		tolerance := 0.000000000001) -> bool:
+	var arrays := mesh.surface_get_arrays(0)
+	var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+	var indices: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
+	for index in range(0, indices.size(), 3):
+		var a := vertices[indices[index]]
+		var b := vertices[indices[index + 1]]
+		var c := vertices[indices[index + 2]]
+		if (c - a).cross(b - a).length_squared() <= tolerance:
+			return true
+	return false
+
+func _mesh_normals_follow_geometry(mesh: ArrayMesh) -> bool:
+	var arrays := mesh.surface_get_arrays(0)
+	var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+	var normals: PackedVector3Array = arrays[Mesh.ARRAY_NORMAL]
+	var indices: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
+	var expected := PackedVector3Array()
+	expected.resize(vertices.size())
+	for index in range(0, indices.size(), 3):
+		var a_index := indices[index]
+		var b_index := indices[index + 1]
+		var c_index := indices[index + 2]
+		var face_normal := (vertices[c_index] - vertices[a_index]).cross(
+			vertices[b_index] - vertices[a_index])
+		expected[a_index] = expected[a_index] + face_normal
+		expected[b_index] = expected[b_index] + face_normal
+		expected[c_index] = expected[c_index] + face_normal
+	for index in range(normals.size()):
+		if expected[index].length_squared() <= 0.000000000001 or \
+				normals[index].dot(expected[index].normalized()) < 0.9999:
+			return false
+	return true
+
 func _initialize() -> void:
 	var decal_material := Stock.material("decal_test", Color.BLACK)
-	var decal := SurfaceDecal.ellipsoid_capsule(Vector3.ZERO, Vector3(2.0, 1.5, 1.0),
+	var decal_center := Vector3.ZERO
+	var decal_radii := Vector3(2.0, 1.5, 1.0)
+	var decal := SurfaceDecal.ellipsoid_capsule(decal_center, decal_radii,
 		Vector2(0.35, 0.2), 0.7, 0.12, 28.0, decal_material, 0.001, 5)
-	check(decal.get_surface_count() == 1 and Lint.triangle_count(decal) == 10,
-		"surface decal emits one triangulated rounded stroke")
-	var decal_arrays := decal.surface_get_arrays(0)
-	var decal_vertices: PackedVector3Array = decal_arrays[Mesh.ARRAY_VERTEX]
-	var decal_normals: PackedVector3Array = decal_arrays[Mesh.ARRAY_NORMAL]
-	var decal_conforms := true
-	for index in range(decal_vertices.size()):
-		var base := decal_vertices[index] - decal_normals[index] * 0.001
-		var ellipsoid_value := base.x * base.x / 4.0 + base.y * base.y / 2.25 + base.z * base.z
-		if absf(ellipsoid_value - 1.0) > 0.0001:
-			decal_conforms = false
-	check(decal_conforms, "surface decal vertices conform to the host ellipsoid")
-	var eye_patch := SurfaceDecal.ellipsoid_ellipse_patch(Vector3.ZERO,
-		Vector3(2.0, 1.5, 1.0), Vector2(0.35, 0.2), Vector2(0.6, 0.28),
+	var repeated_decal := SurfaceDecal.ellipsoid_capsule(decal_center, decal_radii,
+		Vector2(0.35, 0.2), 0.7, 0.12, 28.0, decal_material, 0.001, 5)
+	check(decal.get_surface_count() == 1 and Lint.triangle_count(decal) > 10 and
+		Lint.triangle_count(decal) == Lint.triangle_count(repeated_decal),
+		"surface decal adaptively emits deterministic conformed topology")
+	check(_mesh_clears_ellipsoid(decal, decal_center, decal_radii),
+		"surface decal triangle interiors clear the host ellipsoid")
+	check(_mesh_normals_follow_geometry(decal),
+		"surface decal normals follow the generated geometry")
+
+	var circular_patch := SurfaceDecal.ellipsoid_capsule_patch(decal_center,
+		decal_radii, Vector2(-0.35, -0.2), 0.3, 0.3, 0.0, decal_material,
+		0.01, 0.001, 3, 6)
+	check(not _mesh_has_degenerate_triangles(circular_patch),
+		"equal capsule dimensions emit a circle without duplicate vertices")
+
+	var eye_patch := SurfaceDecal.ellipsoid_ellipse_patch(decal_center,
+		decal_radii, Vector2(0.35, 0.2), Vector2(0.6, 0.28),
 		-8.0, decal_material, 0.025, 0.001, 3, 12)
 	check(eye_patch.get_surface_count() == 1 and Lint.triangle_count(eye_patch) == 60,
 		"feathered patch emits deterministic concentric topology")
 	var patch_arrays := eye_patch.surface_get_arrays(0)
 	var patch_vertices: PackedVector3Array = patch_arrays[Mesh.ARRAY_VERTEX]
-	var patch_normals: PackedVector3Array = patch_arrays[Mesh.ARRAY_NORMAL]
-	var center_base := patch_vertices[0] - patch_normals[0] * 0.026
+	var center_xy := Vector2(0.35, 0.2)
+	var center_base := Vector3(center_xy.x, center_xy.y,
+		_ellipsoid_surface_z(decal_center, decal_radii, center_xy))
+	var center_host_normal := Vector3(center_base.x / 4.0,
+		center_base.y / 2.25, center_base.z).normalized()
+	var expected_center := center_base + center_host_normal * 0.026
+	var edge_angle := TAU * 11.0 / 12.0
+	var edge_xy := center_xy + Vector2(cos(edge_angle) * 0.3,
+		sin(edge_angle) * 0.14).rotated(deg_to_rad(-8.0))
+	var edge_base := Vector3(edge_xy.x, edge_xy.y,
+		_ellipsoid_surface_z(decal_center, decal_radii, edge_xy))
+	var edge_host_normal := Vector3(edge_base.x / 4.0,
+		edge_base.y / 2.25, edge_base.z).normalized()
+	var expected_edge := edge_base + edge_host_normal * 0.001
 	var edge_index := patch_vertices.size() - 1
-	var edge_base := patch_vertices[edge_index] - patch_normals[edge_index] * 0.001
-	var center_value := center_base.x * center_base.x / 4.0 + \
-		center_base.y * center_base.y / 2.25 + center_base.z * center_base.z
-	var edge_value := edge_base.x * edge_base.x / 4.0 + \
-		edge_base.y * edge_base.y / 2.25 + edge_base.z * edge_base.z
-	check(absf(center_value - 1.0) < 0.0001 and absf(edge_value - 1.0) < 0.0001,
-		"feathered patch center and flush rim derive from the same ellipsoid")
+	check(patch_vertices[0].distance_to(expected_center) < 0.00001 and
+		patch_vertices[edge_index].distance_to(expected_edge) < 0.00001,
+		"feathered patch center height and flush rim derive from the same ellipsoid")
+	check(_mesh_normals_follow_geometry(eye_patch),
+		"feathered patch normals follow the embossed geometry")
 
 	var intent_a := AssetIntent.new({"size": 2.0, "kind": "prop"},
 		{"palette": "warm"}, [{"id": "reference", "sha256": "abc"}])
