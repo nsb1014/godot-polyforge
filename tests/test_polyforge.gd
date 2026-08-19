@@ -2,6 +2,7 @@ extends SceneTree
 
 const PolyMesh := preload("res://addons/polyforge/core/mesh.gd")
 const SurfaceAttach := preload("res://addons/polyforge/core/surface_attach.gd")
+const SurfaceDecal := preload("res://addons/polyforge/core/surface_decal.gd")
 const Paint := preload("res://addons/polyforge/core/paint.gd")
 const Assembly := preload("res://addons/polyforge/core/assembly.gd")
 const Component := preload("res://addons/polyforge/core/component.gd")
@@ -134,6 +135,39 @@ func _candidate(report, id: String) -> Dictionary:
 	return {}
 
 func _initialize() -> void:
+	var decal_material := Stock.material("decal_test", Color.BLACK)
+	var decal := SurfaceDecal.ellipsoid_capsule(Vector3.ZERO, Vector3(2.0, 1.5, 1.0),
+		Vector2(0.35, 0.2), 0.7, 0.12, 28.0, decal_material, 0.001, 5)
+	check(decal.get_surface_count() == 1 and Lint.triangle_count(decal) == 10,
+		"surface decal emits one triangulated rounded stroke")
+	var decal_arrays := decal.surface_get_arrays(0)
+	var decal_vertices: PackedVector3Array = decal_arrays[Mesh.ARRAY_VERTEX]
+	var decal_normals: PackedVector3Array = decal_arrays[Mesh.ARRAY_NORMAL]
+	var decal_conforms := true
+	for index in range(decal_vertices.size()):
+		var base := decal_vertices[index] - decal_normals[index] * 0.001
+		var ellipsoid_value := base.x * base.x / 4.0 + base.y * base.y / 2.25 + base.z * base.z
+		if absf(ellipsoid_value - 1.0) > 0.0001:
+			decal_conforms = false
+	check(decal_conforms, "surface decal vertices conform to the host ellipsoid")
+	var eye_patch := SurfaceDecal.ellipsoid_ellipse_patch(Vector3.ZERO,
+		Vector3(2.0, 1.5, 1.0), Vector2(0.35, 0.2), Vector2(0.6, 0.28),
+		-8.0, decal_material, 0.025, 0.001, 3, 12)
+	check(eye_patch.get_surface_count() == 1 and Lint.triangle_count(eye_patch) == 60,
+		"feathered patch emits deterministic concentric topology")
+	var patch_arrays := eye_patch.surface_get_arrays(0)
+	var patch_vertices: PackedVector3Array = patch_arrays[Mesh.ARRAY_VERTEX]
+	var patch_normals: PackedVector3Array = patch_arrays[Mesh.ARRAY_NORMAL]
+	var center_base := patch_vertices[0] - patch_normals[0] * 0.026
+	var edge_index := patch_vertices.size() - 1
+	var edge_base := patch_vertices[edge_index] - patch_normals[edge_index] * 0.001
+	var center_value := center_base.x * center_base.x / 4.0 + \
+		center_base.y * center_base.y / 2.25 + center_base.z * center_base.z
+	var edge_value := edge_base.x * edge_base.x / 4.0 + \
+		edge_base.y * edge_base.y / 2.25 + edge_base.z * edge_base.z
+	check(absf(center_value - 1.0) < 0.0001 and absf(edge_value - 1.0) < 0.0001,
+		"feathered patch center and flush rim derive from the same ellipsoid")
+
 	var intent_a := AssetIntent.new({"size": 2.0, "kind": "prop"},
 		{"palette": "warm"}, [{"id": "reference", "sha256": "abc"}])
 	var intent_b := AssetIntent.new({"kind": "prop", "size": 2.0},
