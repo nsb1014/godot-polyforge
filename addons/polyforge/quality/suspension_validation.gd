@@ -54,6 +54,37 @@ static func evaluate(spec: Dictionary) -> Dictionary:
 			failures.append("SUSPENSION_LENGTH_OUT_OF_RANGE: " + id)
 		if spec.assembly.find(str(evidence.get("part_name", ""))) == null:
 			failures.append("SUSPENSION_PART_MISSING: " + id)
+		for endpoint_name in ["a", "b"]:
+			var planned: Dictionary = member.get(endpoint_name + "_termination", {})
+			if planned.is_empty():
+				continue
+			var terminations: Dictionary = evidence.get("terminations", {})
+			if not terminations.has(endpoint_name):
+				failures.append("SUSPENSION_TERMINATION_MISSING: %s/%s" % [id,
+					endpoint_name])
+				continue
+			var termination: Dictionary = terminations[endpoint_name]
+			var parts_ok := true
+			for part_name in termination.get("part_names", []):
+				parts_ok = parts_ok and spec.assembly.find(str(part_name)) != null
+			var overlap := float(termination.get("host_overlap", 0.0))
+			var minimum_overlap := float(planned.get("minimum_host_overlap", 0.0))
+			var endpoint_distance := float(termination.get("endpoint_distance", INF))
+			var surface_distance := float(termination.get("surface_distance", INF))
+			var termination_ok := parts_ok and overlap >= minimum_overlap and \
+				endpoint_distance <= float(planned.get("endpoint_tolerance", 0.0001)) and \
+				surface_distance <= float(planned.get("maximum_surface_distance", 0.0))
+			measurements.append({"type": "suspension_termination", "id": id,
+				"endpoint": endpoint_name, "host_overlap": overlap,
+				"minimum_host_overlap": minimum_overlap,
+				"endpoint_distance": endpoint_distance, "parts_ok": parts_ok,
+				"surface_distance": surface_distance,
+				"maximum_surface_distance": float(planned.get(
+					"maximum_surface_distance", 0.0)),
+				"ok": termination_ok})
+			if not termination_ok:
+				failures.append("SUSPENSION_TERMINATION_INVALID: %s/%s" % [id,
+					endpoint_name])
 		var paired_with := str(member.get("paired_with", ""))
 		if paired_with != "" and id < paired_with and evidence_by_id.has(paired_with):
 			var delta := absf(length - float(evidence_by_id[paired_with].length))

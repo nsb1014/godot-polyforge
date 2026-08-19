@@ -94,6 +94,7 @@ static func data(spec: Dictionary, validation: Dictionary, outputs: Dictionary) 
 		"reference_evidence": validation.get("reference", {}),
 		"cohesion_evidence": validation.get("cohesion", {}),
 		"suspension_evidence": validation.get("suspension", {}),
+		"plausibility_evidence": validation.get("plausibility", {}),
 		"visual_evidence": validation.get("visual_evidence", {}),
 		"materials": all_materials,
 		"parts": part_records,

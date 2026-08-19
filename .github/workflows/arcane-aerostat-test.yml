@@ -90,7 +90,7 @@ jobs:
           root = Path("dist/base")
           manifest = json.loads((root / "arcane_aerostat.manifest.json").read_text())
           assert [stage["stage_id"] for stage in manifest["process"]["stages"]] == [
-              "intent", "resolve_brief", "resolve_design", "plan_assembly",
+              "intent", "resolve_brief", "resolve_plausibility", "resolve_design", "plan_assembly",
               "solve_rigid", "plan_interfaces", "compile_geometry",
               "compile_interfaces", "plan_suspension", "compile_suspension",
               "compile_appearance"]
@@ -106,12 +106,16 @@ jobs:
               manifest["style_compilation"]["geometry_hash_after"]
           assert manifest["suspension_evidence"]["ok"]
           assert manifest["suspension_evidence"]["members"] == 5
+          assert manifest["plausibility_evidence"]["ok"]
+          assert manifest["plausibility_evidence"]["required_support_nodes"] == 4
+          assert all(len(member["terminations"]) == 2
+                     for member in suspension_compilation["payload"]["members"])
           assert manifest["reference_evidence"]["ok"]
           assert manifest["cohesion_evidence"]["ok"]
           assert manifest["cohesion_evidence"]["mass_hierarchy"]["ok"]
           assert manifest["visual_evidence"]["semantic_render_ok"]
-          assert manifest["topology"]["statistics"]["rendered_triangles"] <= 7000
-          assert manifest["topology"]["statistics"]["unique_triangles"] <= 6500
+          assert manifest["topology"]["statistics"]["rendered_triangles"] <= 7600
+          assert manifest["topology"]["statistics"]["unique_triangles"] <= 7400
           for name in ("arcane_aerostat.glb", "arcane_aerostat_viewer.json",
                        "arcane_aerostat_viewer.html", "arcane_aerostat_turntable.png"):
               assert (root / name).stat().st_size > 0

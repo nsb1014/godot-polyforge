@@ -13,6 +13,7 @@ const ProcessValidation := preload("res://addons/polyforge/quality/process_valid
 const ReferenceValidation := preload("res://addons/polyforge/quality/reference_validation.gd")
 const CohesionValidation := preload("res://addons/polyforge/quality/cohesion_validation.gd")
 const SuspensionValidation := preload("res://addons/polyforge/quality/suspension_validation.gd")
+const PlausibilityValidation := preload("res://addons/polyforge/quality/plausibility_validation.gd")
 const MassHierarchyValidation := preload("res://addons/polyforge/quality/mass_hierarchy_validation.gd")
 const VisualEvidence := preload("res://addons/polyforge/quality/visual_evidence.gd")
 const GLTFExport := preload("res://addons/polyforge/exporters/gltf_export.gd")
@@ -143,6 +144,13 @@ static func validate(spec: Dictionary) -> Dictionary:
 		failures.append("suspension: " + str(failure))
 	for measurement in suspension_validation.measurements:
 		measurements.append({"type": "suspension", "result": measurement})
+	var plausibility_validation := PlausibilityValidation.evaluate(spec)
+	for failure in plausibility_validation.failures:
+		failures.append("plausibility: " + str(failure))
+	for warning in plausibility_validation.warnings:
+		warnings.append("plausibility: " + str(warning))
+	for measurement in plausibility_validation.measurements:
+		measurements.append({"type": "plausibility", "result": measurement})
 	var bounds := _bounds(spec.assembly.parts)
 	var anchor_slack := maxf(bounds.size.x, maxf(bounds.size.y, bounds.size.z)) * 0.25
 	for anchor_name in spec.anchors:
@@ -166,6 +174,7 @@ static func validate(spec: Dictionary) -> Dictionary:
 		"reference": reference_validation,
 		"cohesion": cohesion_validation,
 		"suspension": suspension_validation,
+		"plausibility": plausibility_validation,
 		"triangles": triangles,
 	}
 

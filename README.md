@@ -22,7 +22,9 @@ before reference preferences are considered.
 `examples/arcane_aerostat_recipe.gd` extends that proof to a compound suspended asset. Rigid
 placement owns the envelope, basket, lantern, and side pods; interface compilation owns only the
 pod collars; a hash-bound suspension plan emits and verifies ropes without moving any solved
-component; appearance remains the final non-geometric stage.
+component; appearance remains the final non-geometric stage. Its causal plausibility contract
+distinguishes observed structure, functional inference, and non-blocking stylistic hypotheses,
+then requires every supported mass to reach the lift source through measured visible evidence.
 
 ## Modules
 
@@ -45,6 +47,7 @@ component; appearance remains the final non-geometric stage.
 | `core/candidate_selection.gd` | Independent hard-gate evidence and explicit soft-objective selection |
 | `core/design_brief.gd` | Immutable semantic identity, mass hierarchy, signatures, and reference policy |
 | `core/cohesion_contract.gd` | Asset-specific backbone, interface grammar, and projected-mass targets |
+| `core/plausibility_contract.gd` | Domain-owned support graph, causal relations, evidence authority, and hidden-geometry policy |
 | `core/interface_plan.gd` | Connection-local transition treatments bound to one solved assembly |
 | `core/interface_compilation.gd` | Hash-linked interface geometry and measured endpoint-overlap evidence |
 | `core/suspension_plan.gd` | Socket-to-socket tension members bound to solved transforms and input geometry |
@@ -78,6 +81,7 @@ component; appearance remains the final non-geometric stage.
 | `quality/cohesion_validation.gd` | Hard backbone, interface-profile, geometry-hash, and endpoint-overlap validation |
 | `quality/mass_hierarchy_validation.gd` | Recipe-declared projected-area bands and dominance across rendered views |
 | `quality/suspension_validation.gd` | Suspension provenance, emitted-part, range, and paired-length validation |
+| `quality/plausibility_validation.gd` | Support-path reachability and causal relation evidence validation |
 | `quality/visual_evidence.gd` | Normalized cross-renderer evidence vectors and renderer-scoped baseline policy |
 | `terrain/zone.gd` | Landforms, spline cuts, surface rules, and constrained deterministic scatter |
 | `exporters/viewer_export.gd` | JSON and self-contained HTML export for the bundled WebGL viewer |
@@ -237,8 +241,19 @@ style compiler consumes the post-interface geometry hash.
 Remote suspended masses are still placed by the rigid solver so their transforms stay
 authoritative. `SuspensionPlan` then references typed endpoints on those solved instances.
 `SuspensionCompiler` can add straight tension members and length evidence, but it cannot reposition
-an endpoint or repair a rigid solve. Paired-member tolerances are validated independently, and the
-style compiler must consume the post-suspension geometry hash.
+an endpoint or repair a rigid solve. Optional termination treatments emit visible bosses and
+eyelets at both ends, measure their overlap with the host components, and prove that the cable
+endpoint lies inside its termination. Paired-member tolerances are validated independently, and
+the style compiler must consume the post-suspension geometry hash.
+
+Realism is expressed as causal plausibility rather than image similarity. `PlausibilityContract`
+declares support sources, masses that require support, and relations such as `hangs_from` or
+`mounts_to`. Required relations must bind to solved connections, compiled interfaces, or suspension
+members with visible terminations. Every required mass must reach a declared support source.
+Reference claims are labeled `observed`, `functional_inference`, or `stylistic_hypothesis`;
+stylistic hypotheses cannot become hard requirements, and unseen geometry uses the minimal cohesive
+completion policy. The validator reports individual hard failures instead of collapsing plausibility
+into one universal realism score.
 
 Mass hierarchy is deliberately not a universal aesthetic score. Godot renders each declared mass
 group in isolation, normalizes its projected area against the declared groups, and uses the median

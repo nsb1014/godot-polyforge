@@ -53,6 +53,12 @@ static func evaluate(spec: Dictionary) -> Dictionary:
 		for required in ["plan_suspension", "compile_suspension"]:
 			if not stage_ids.has(required):
 				failures.append("PROCESS_MISSING_SUSPENSION_STAGE: %s" % required)
+	var has_plausibility := contracts.has("plausibility_contract")
+	if has_plausibility:
+		if not contracts.has("design_brief"):
+			failures.append("PROCESS_PLAUSIBILITY_REQUIRES_DESIGN_BRIEF")
+		if not stage_ids.has("resolve_plausibility"):
+			failures.append("PROCESS_MISSING_PLAUSIBILITY_STAGE")
 	var has_candidates := contracts.has("candidate_set") or \
 		contracts.has("candidate_repair_report") or contracts.has("candidate_selection")
 	if has_candidates:
@@ -88,9 +94,11 @@ static func evaluate(spec: Dictionary) -> Dictionary:
 		for required in ["resolve_brief", "plan_interfaces", "compile_interfaces"]:
 			if not stage_ids.has(required):
 				failures.append("PROCESS_MISSING_COHESION_STAGE: %s" % required)
-		var cohesion_order := ["intent", "resolve_brief", "resolve_design",
-			"plan_assembly", "solve_rigid", "plan_interfaces", "compile_geometry",
-			"compile_interfaces"]
+		var cohesion_order := ["intent", "resolve_brief"]
+		if has_plausibility:
+			cohesion_order.append("resolve_plausibility")
+		cohesion_order.append_array(["resolve_design", "plan_assembly", "solve_rigid",
+			"plan_interfaces", "compile_geometry", "compile_interfaces"])
 		if has_suspension:
 			cohesion_order.append_array(["plan_suspension", "compile_suspension"])
 		cohesion_order.append("compile_appearance")
@@ -199,6 +207,18 @@ static func evaluate(spec: Dictionary) -> Dictionary:
 					str(stages_by_id.get("resolve_design", {}).get(
 					"input_hashes", {}).get("design_brief", "")) != brief_hash:
 				failures.append("PROCESS_BRIEF_STAGE_HASH_MISMATCH")
+			if has_plausibility and contracts.has("plausibility_contract"):
+				var plausibility_hash := CanonicalArtifact.hash_value(
+					contracts.plausibility_contract)
+				if str(contracts.plausibility_contract.get("payload", {}).get(
+						"design_brief_hash", "")) != brief_hash:
+					failures.append("PROCESS_PLAUSIBILITY_BRIEF_HASH_MISMATCH")
+				if str(stages_by_id.get("resolve_plausibility", {}).get(
+						"output_hash", "")) != plausibility_hash or str(
+						stages_by_id.get("resolve_design", {}).get(
+						"input_hashes", {}).get("plausibility_contract", "")) != \
+						plausibility_hash:
+					failures.append("PROCESS_PLAUSIBILITY_STAGE_HASH_MISMATCH")
 			if str(stages_by_id.get("plan_interfaces", {}).get(
 					"output_hash", "")) != interface_plan_hash:
 				failures.append("PROCESS_INTERFACE_PLAN_STAGE_HASH_MISMATCH")

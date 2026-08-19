@@ -27,6 +27,23 @@ func validate() -> PackedStringArray:
 					str(endpoint.get("socket", "")) == "":
 				errors.append("suspension member %s requires endpoint %s" % [id,
 					endpoint_name])
+			var termination: Dictionary = member.get(endpoint_name + "_termination", {})
+			if not termination.is_empty():
+				if str(termination.get("family", "")) != "tension.eyelet":
+					errors.append("suspension member %s has unsupported %s termination" % [
+						id, endpoint_name])
+				if str(termination.get("material_slot", "")) == "":
+					errors.append("suspension member %s termination requires a material slot" % id)
+				var inner := float(termination.get("inner_radius", 0.0))
+				var outer := float(termination.get("outer_radius", 0.0))
+				if inner <= 0.0 or outer <= inner:
+					errors.append("suspension member %s termination requires valid eyelet radii" % id)
+				if float(termination.get("boss_height", 0.0)) <= 0.0:
+					errors.append("suspension member %s termination requires positive boss height" % id)
+				if float(termination.get("minimum_host_overlap", 0.0)) <= 0.0:
+					errors.append("suspension member %s termination requires host overlap" % id)
+				if float(termination.get("maximum_surface_distance", 0.0)) <= 0.0:
+					errors.append("suspension member %s termination requires a surface-distance limit" % id)
 		if float(member.get("radius", 0.0)) <= 0.0:
 			errors.append("suspension member %s requires a positive radius" % id)
 		if float(member.get("minimum_length", 0.0)) <= 0.0:
