@@ -159,6 +159,7 @@ Viewer and preview output are optional review aids and are never required at app
 | `core/parameters.gd` | Parameter schemas, derived measurements, overrides, and sweeps |
 | `core/attachments.gd` | Geometry-sampled attachment frames and drift checks |
 | `core/surface_attach.gd` | Closest-surface queries and normal-aligned placement |
+| `core/surface_decal.gd` | Ellipsoid-conforming decals and feathered shallow patches |
 | `core/surface_types.gd` | Construction, role, repetition, and motion classification |
 | `core/topology_budget.gd` | Projected-size topology profiles and budgets |
 | `core/rig.gd` | Bones, skin bindings, and animation clip data |

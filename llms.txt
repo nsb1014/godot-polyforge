@@ -134,6 +134,7 @@ sweep, exports both GLB modes, imports them again, and discards the results.
 - `core/parameters.gd`: schemas, derived measurements, and sweeps.
 - `core/attachments.gd`: sampled surface frames and drift validation.
 - `core/surface_attach.gd`: closest-surface placement.
+- `core/surface_decal.gd`: ellipsoid-conforming decals and shallow patches.
 - `core/topology_budget.gd`: deterministic projected-size topology.
 - `core/rig.gd` and `core/animation.gd`: rig and clip contracts.
 - `build/build_pipeline.gd`: validation and coordinated production output.
