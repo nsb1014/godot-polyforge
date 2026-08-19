@@ -661,22 +661,28 @@ func _initialize() -> void:
 	root.add_child(studio_host)
 	PreviewExport._add_studio(studio_host, Node3D.new())
 	var studio_env: Environment
-	var studio_key := 0.0
-	var studio_fill := 0.0
+	var studio_key: DirectionalLight3D
+	var studio_fill: DirectionalLight3D
 	for child in studio_host.get_children():
 		if child is WorldEnvironment:
 			studio_env = (child as WorldEnvironment).environment
-		elif child is DirectionalLight3D:
-			var energy: float = (child as DirectionalLight3D).light_energy
-			if energy > studio_key:
-				studio_fill = studio_key
-				studio_key = energy
-			else:
-				studio_fill = energy
+		elif child is DirectionalLight3D and str(child.name) == "key":
+			studio_key = child
+		elif child is DirectionalLight3D and str(child.name) == "fill":
+			studio_fill = child
 	check(studio_env != null and studio_env.tonemap_mode == Environment.TONE_MAPPER_LINEAR,
 		"preview studio uses linear tonemap so authored albedo is not filmic-lifted toward white")
-	check(studio_env != null and
-		studio_env.ambient_light_energy + studio_key + studio_fill <= 1.15,
+	check(studio_env != null and is_equal_approx(studio_env.ambient_light_energy, 0.34),
+		"preview studio ambient energy matches the bundled viewer Lambert term")
+	check(studio_key != null and is_equal_approx(studio_key.light_energy, 0.60) and
+		studio_key.rotation_degrees.is_equal_approx(Vector3(-48.0, -32.0, 0.0)),
+		"preview studio key light keeps the existing direction at viewer key energy")
+	check(studio_fill != null and is_equal_approx(studio_fill.light_energy, 0.16) and
+		studio_fill.rotation_degrees.is_equal_approx(Vector3(-20.0, 145.0, 0.0)),
+		"preview studio fill light keeps the existing direction at viewer fill energy")
+	check(studio_env != null and studio_key != null and studio_fill != null and
+		studio_env.ambient_light_energy + studio_key.light_energy +
+			studio_fill.light_energy <= 1.15,
 		"preview studio peak lighting stays within the bundled viewer energy budget")
 	studio_host.queue_free()
 	var paired_visibility := Readability.aggregate_views([
