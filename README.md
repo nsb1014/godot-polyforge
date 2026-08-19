@@ -68,6 +68,7 @@ then requires every supported mass to reach the lift source through measured vis
 | `core/attachments.gd` | Geometry-sampled surface frames, child bindings, provenance, and drift checks |
 | `core/stock.gd` | Godot primitive and material factories for named recipes |
 | `core/surface_attach.gd` | Closest-surface placement with normal-aligned frames and inset |
+| `core/surface_decal.gd` | Flush decals and feathered embossed patches conformed to ellipsoid surfaces |
 | `core/paint.gd` | Deterministic gradients, noise, streaks, bands, planks, bricks, and painted AO |
 | `quality/lint_core.gd` | Bounds, indices, degeneracy, winding, manifold, budget, attribute, and determinism checks |
 | `quality/checks.gd` | Named-part gap, intersection, burial, symmetry, ratio, and `noclip` checks |
