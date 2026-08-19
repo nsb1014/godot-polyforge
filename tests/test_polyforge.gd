@@ -657,6 +657,28 @@ func _initialize() -> void:
 	id_image.set_pixel(0, 0, Color(0.0, 0.62, 0.0, 1.0))
 	check(PreviewExport._count_color(id_image, Color.LIME) == 1,
 		"visibility ID masks compare chroma independently of tone-mapped luminance")
+	var studio_host := SubViewport.new()
+	root.add_child(studio_host)
+	PreviewExport._add_studio(studio_host, Node3D.new())
+	var studio_env: Environment
+	var studio_key := 0.0
+	var studio_fill := 0.0
+	for child in studio_host.get_children():
+		if child is WorldEnvironment:
+			studio_env = (child as WorldEnvironment).environment
+		elif child is DirectionalLight3D:
+			var energy: float = (child as DirectionalLight3D).light_energy
+			if energy > studio_key:
+				studio_fill = studio_key
+				studio_key = energy
+			else:
+				studio_fill = energy
+	check(studio_env != null and studio_env.tonemap_mode == Environment.TONE_MAPPER_LINEAR,
+		"preview studio uses linear tonemap so authored albedo is not filmic-lifted toward white")
+	check(studio_env != null and
+		studio_env.ambient_light_energy + studio_key + studio_fill <= 1.15,
+		"preview studio peak lighting stays within the bundled viewer energy budget")
+	studio_host.queue_free()
 	var paired_visibility := Readability.aggregate_views([
 		{"yaw": 0.0, "readability": readability, "issues": PackedStringArray(),
 			"part_visibility": {"front": {"visible_fraction": 0.72}}},
