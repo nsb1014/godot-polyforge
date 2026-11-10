@@ -23,6 +23,8 @@ var tolerance := 0.012
 var shapes: Array = []
 var curve_evidence: Array = []
 var slots := {}
+var layer_fits: Array = []
+var grips: Array = []
 
 func parameters() -> Dictionary:
 	return {
@@ -83,6 +85,56 @@ func _ring(name: String, center: Vector3, inner: float, outer: float,
 	shapes.append({"name": name, "type": "torus", "center": center,
 		"inner": inner, "outer": outer, "basis": basis, "slot": material})
 
+func _definition(name: String) -> Dictionary:
+	for definition in shapes:
+		if definition.name == name:
+			return definition
+	assert(false, "Unknown shape owner: " + name)
+	return {}
+
+func _fitted_armor(name: String, owner: String, start: float, end: float,
+		clearance: float) -> Array:
+	var body := _definition(owner)
+	var stations: Array = body.stations
+	var heights: Array = [start]
+	for station in stations:
+		if station.y > start and station.y < end:
+			heights.append(station.y)
+	heights.append(end)
+	var shell: Array = []
+	for height in heights:
+		var section := Shape.section_at(stations, height)
+		shell.append(Vector3(section.x + clearance, section.y, section.z + clearance))
+	_loft(name, shell, "steel", body.position, body.basis)
+	layer_fits.append({"inner": owner, "outer": name, "start": start, "end": end,
+		"minimum_clearance": clearance * .25})
+	return shell
+
+func _arc(name: String, center: Vector3, axis: Vector3, radial: Vector3,
+		bend: float, radius: float, start: float, end: float) -> void:
+	shapes.append({"name": name, "type": "arc_tube", "center": center, "axis": axis,
+		"radial": radial, "bend_radius": bend, "radius": radius,
+		"start": start, "end": end, "slot": "hide"})
+
+func _grip(suffix: String, center: Vector3, axis: Vector3, elbow: Vector3) -> Vector3:
+	var toward_elbow := elbow - center
+	var palm_normal := (toward_elbow - axis * toward_elbow.dot(axis)).normalized()
+	var across := palm_normal.cross(axis)
+	var palm_frame := Basis(axis, across, palm_normal)
+	_ellipsoid("hand_" + suffix, center + palm_normal * .182,
+		Vector3(.21, .142, .09), "hide", palm_frame.get_euler())
+	for finger in range(4):
+		var finger_center := center + axis * ((finger - 1.5) * .103)
+		_arc("finger_%s_%d" % [suffix, finger], finger_center, axis, palm_normal,
+			.135, .046, deg_to_rad(10), deg_to_rad(250))
+	_arc("thumb_" + suffix, center + axis * .225, axis, palm_normal,
+		.15, .06, deg_to_rad(-15), deg_to_rad(-125))
+	var wrist := center + palm_normal * .285
+	grips.append({"suffix": suffix, "center": center, "axis": axis,
+		"handle_radius": .078, "minimum_clearance": .004,
+		"maximum_contact_gap": .025, "wrist": wrist})
+	return wrist
+
 func _compile_shapes(definitions: Array) -> void:
 	for definition in definitions:
 		var name: String = definition.name
@@ -92,7 +144,7 @@ func _compile_shapes(definitions: Array) -> void:
 				var radii: Vector3 = definition.radii
 				var sides := Shape.radial_segments(maxf(radii.x, maxf(radii.y, radii.z)), tolerance)
 				_add(name, Stock.sphere(1.0, sides, maxi(4, sides / 2)), definition.center,
-					Basis.from_euler(definition.rotation).scaled(radii), material)
+					Basis.from_euler(definition.rotation) * Basis.from_scale(radii), material)
 			"elliptical_stations":
 				_poly(name, Shape.loft(definition.stations, tolerance), material,
 					definition.position, definition.basis)
@@ -108,6 +160,15 @@ func _compile_shapes(definitions: Array) -> void:
 			"extruded_profile":
 				_poly(name, Shape.extruded_profile(definition.outline, definition.depth), material,
 					definition.position, Basis(Vector3.FORWARD, definition.rotation), "profile", -1.0)
+			"arc_tube":
+				_poly(name, Shape.arc_tube(definition.center, definition.axis, definition.radial,
+					definition.bend_radius, definition.radius, definition.start, definition.end,
+					minf(tolerance * .25, .003)), material, Vector3.ZERO, Basis.IDENTITY, "organic", 65.0)
+			"loft_band":
+				_poly(name, Shape.loft_band(definition.stations, definition.start, definition.end,
+					definition.width, definition.offset, definition.thickness), material,
+					Vector3.ZERO, Basis.IDENTITY, "profile", 55.0)
+
 			"torus":
 				var sides := Shape.radial_segments(definition.outer, tolerance * 0.5)
 				_add(name, Stock.torus(definition.inner, definition.outer, sides, 8),
@@ -119,6 +180,8 @@ func build(p) -> Dictionary:
 	asset = Assembly.new()
 	shapes.clear()
 	curve_evidence.clear()
+	layer_fits.clear()
+	grips.clear()
 	unit = p.derive("authoring.unit", "height", 0.25)
 	tolerance = 0.014 / p.value("detail")
 	var palette := {
@@ -160,12 +223,15 @@ func build(p) -> Dictionary:
 			Vector3(.28, .25, .13), "steel")
 		_ellipsoid("knee_boss_" + suffix, knee + Vector3(0, .015, .31),
 			Vector3(.12, .11, .055), "gold")
-		_limb("greave_" + suffix, ankle + Vector3(0, .06, .09),
-			knee + Vector3(0, -.10, .11), .245, "steel", .72)
-		for level in [.36, .72]:
-			var center := ankle.lerp(knee, level)
-			_ring("greave_rim_%s_%s" % [suffix, str(level)], center,
-				.205, .245, "gold", Basis(Quaternion(Vector3.UP, (knee - ankle).normalized())))
+		var shin_length := knee.distance_to(ankle)
+		var greave_stations := _fitted_armor("greave_" + suffix, "shin_" + suffix,
+			shin_length * .12, shin_length * .88, .035)
+		var shin_frame := Basis(Quaternion(Vector3.UP, (ankle - knee).normalized()))
+		for level in [.14, .86]:
+			var section := Shape.section_at(greave_stations, shin_length * level)
+			var ellipse := Basis.from_scale(Vector3(1, 1, section.z / section.x))
+			_ring("greave_rim_%s_%s" % [suffix, str(level)], knee.lerp(ankle, level),
+				section.x - .015, section.x + .020, "gold", shin_frame * ellipse)
 		# Layered hip plates, anchored to the belt.
 		for j in range(3):
 			_plate("hip_plate_%s_%d" % [suffix, j], [Vector2(-.13, .12),
@@ -174,8 +240,7 @@ func build(p) -> Dictionary:
 				side * .22)
 
 	# Breastplate follows the measured body taper. Gold rims remain separate surfaces.
-	_loft("armor_breastplate", [Vector3(.455, 1.95, .335), Vector3(.56, 2.24, .39),
-		Vector3(.67, 2.58, .405), Vector3(.62, 2.72, .34)], "steel")
+	var chest_stations := _fitted_armor("armor_breastplate", "body_torso", 1.95, 2.73, .04)
 	for side in [-1.0, 1.0]:
 		_rod("chest_rim_" + str(side), Vector3(0, 2.48, .405),
 			Vector3(side * .57, 2.72, .24), .026, "gold")
@@ -203,19 +268,22 @@ func build(p) -> Dictionary:
 		var shoulder := Vector3(side * .79, 2.75, 0)
 		var elbow := Vector3(-1.01, 2.12, .18) if side < 0 else Vector3(1.02, 2.26, .20)
 		var hand := axe_start.lerp(axe_end, .24 if side < 0 else .70)
-		_limb("upper_arm_" + suffix, shoulder, elbow, .34, "hide")
-		_limb("forearm_" + suffix, elbow, hand, .29, "hide")
-		_limb("bracer_" + suffix, elbow.lerp(hand, .20), elbow.lerp(hand, .73), .305, "steel")
-		for fraction in [.22, .70]:
-			_ring("bracer_rim_%s_%s" % [suffix, str(fraction)], elbow.lerp(hand, fraction),
-				.265, .305, "gold", Basis(Quaternion(Vector3.UP, (hand - elbow).normalized())))
-		_ellipsoid("hand_" + suffix, hand, Vector3(.255, .25, .20), "hide")
-		for finger in range(4):
-			var center := hand + axe_axis * ((finger - 1.5) * .085) + Vector3(0, 0, .13)
-			_ellipsoid("finger_%s_%d" % [suffix, finger], center,
-				Vector3(.06, .11, .085), "hide", Vector3(0, 0, -.65))
-		_ellipsoid("thumb_" + suffix, hand + Vector3(-side * .15, .11, .08),
-			Vector3(.095, .16, .10), "muzzle", Vector3(0, 0, side * .55))
+		# The hidden shoulder volume is owned by the pauldron; exposed flesh starts below it.
+		_limb("upper_arm_" + suffix, shoulder.lerp(elbow, .40), elbow, .34, "hide")
+		var wrist := _grip(suffix, hand, axe_axis, elbow)
+		var forearm_length := elbow.distance_to(wrist)
+		var forearm_frame := Basis(Quaternion(Vector3.UP, (wrist - elbow).normalized()))
+		_loft("forearm_" + suffix, [Vector3(.21, 0, .19),
+			Vector3(.27, forearm_length * .28, .23),
+			Vector3(.205, forearm_length * .70, .18),
+			Vector3(.115, forearm_length, .105)], "hide", elbow, forearm_frame)
+		var bracer_stations := _fitted_armor("bracer_" + suffix, "forearm_" + suffix,
+			forearm_length * .18, forearm_length * .86, .035)
+		for fraction in [.20, .84]:
+			var section := Shape.section_at(bracer_stations, forearm_length * fraction)
+			var ellipse := Basis.from_scale(Vector3(1, 1, section.z / section.x))
+			_ring("bracer_rim_%s_%s" % [suffix, str(fraction)], elbow.lerp(wrist, fraction),
+				section.x - .015, section.x + .020, "gold", forearm_frame * ellipse)
 		# Overlapping metal shoulder shells, largest toward the top.
 		for layer in range(3):
 			var width := .48 - layer * .035
@@ -290,15 +358,18 @@ func build(p) -> Dictionary:
 			Vector3(x * 1.1, 3.17, -.33), Vector3(x * .9, 2.98, -.31),
 			Vector3(x * .8, 2.87, -.25)], .105, .015, "mane")
 	# Diagonal leather harness and buckle follow the front armor surface.
-	_plate("chest_harness", [Vector2(-.065, .43), Vector2(.065, .43),
-		Vector2(.065, -.43), Vector2(-.065, -.43)], .035,
-		"leather", Vector3(-.20, 2.36, .40), -.66)
+	shapes.append({"name": "chest_harness", "type": "loft_band", "stations": chest_stations,
+		"start": Vector2(-.46, 2.65), "end": Vector2(.07, 2.04), "width": .13,
+		"offset": .008, "thickness": .025, "slot": "leather"})
+	var buckle_center := Vector2(-.33, 2.50)
+	var buckle_section := Shape.section_at(chest_stations, buckle_center.y)
+	var buckle_z := buckle_section.z * sqrt(1.0 - pow(buckle_center.x / buckle_section.x, 2))
 	_plate("harness_buckle", [Vector2(-.095, -.12), Vector2(.095, -.12),
 		Vector2(.095, .12), Vector2(-.095, .12)], .035,
-		"gold", Vector3(-.33, 2.53, .43), -.66)
+		"gold", Vector3(buckle_center.x, buckle_center.y, buckle_z + .045), -.66)
 	_plate("harness_buckle_inset", [Vector2(-.055, -.08), Vector2(.055, -.08),
 		Vector2(.055, .08), Vector2(-.055, .08)], .025,
-		"leather", Vector3(-.33, 2.53, .457), -.66)
+		"leather", Vector3(buckle_center.x, buckle_center.y, buckle_z + .072), -.66)
 	for side in [-1.0, 1.0]:
 		var suffix := "L" if side < 0 else "R"
 		for rivet in range(3):
@@ -359,6 +430,23 @@ func build(p) -> Dictionary:
 		"curve_evidence": curve_evidence, "tessellation_tolerance": tolerance * unit})
 	stages.record("compile_appearance", "polyforge.style_slots.v1",
 		{"geometry": style.geometry_hash_before, "appearance_intent": intent.appearance_hash()}, style)
+	var fit_checks: Array = []
+	for fit in layer_fits:
+		var owner := _definition(fit.inner)
+		fit_checks.append({"type": "shell_clearance", "a": fit.inner, "b": fit.outer,
+			"frame": Transform3D(owner.basis, owner.position * unit),
+			"start": fit.start * unit, "end": fit.end * unit,
+			"minimum": fit.minimum_clearance * unit})
+	for grip in grips:
+		var members: Array = ["hand_" + grip.suffix, "thumb_" + grip.suffix]
+		for finger in range(4):
+			members.append("finger_%s_%d" % [grip.suffix, finger])
+		for member in members:
+			fit_checks.append({"type": "cylinder_clearance", "a": member,
+				"center": grip.center * unit, "axis": grip.axis,
+				"radius": grip.handle_radius * unit, "minimum": grip.minimum_clearance * unit,
+				"maximum": grip.maximum_contact_gap * unit})
+
 	var reference := Reference.new({"sha256": REFERENCE_SHA,
 		"subject": "rightmost minotaur", "authority": "single-view visual estimates"}, {
 		"horns": {"selector": {"names": ["horn_L", "horn_R"]}, "minimum": 2},
@@ -373,7 +461,7 @@ func build(p) -> Dictionary:
 		"checks": [Checks.require_axis_size("body_torso", 0, 1.44 * unit, .0001 * unit),
 			Checks.require_axis_size("body_torso", 1, 1.42 * unit, .0001 * unit),
 			Checks.require_axis_size("head_skull", 0, .68 * unit, .0001 * unit),
-			Checks.require_axis_size("tabard", 1, .98 * unit, .0001 * unit)],
+			Checks.require_axis_size("tabard", 1, .98 * unit, .0001 * unit)] + fit_checks,
 		"anchors": {"head": Vector3(0, 3.36, .035) * unit,
 			"left_grip": axe_start.lerp(axe_end, .24) * unit,
 			"right_grip": axe_start.lerp(axe_end, .70) * unit, "ground": Vector3.ZERO},
@@ -388,4 +476,5 @@ func build(p) -> Dictionary:
 				"depth and back are inferred", "static pose", "hand-authored measurement targets"],
 			"shape_definitions": Canonical.canonicalize(shapes),
 			"curve_evidence": curve_evidence,
+			"layer_fits": layer_fits, "grips": Canonical.canonicalize(grips),
 			"error_scope": "Centerline chords and cross-section rings; not full surface or image-match error"}}

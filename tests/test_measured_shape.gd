@@ -4,6 +4,8 @@ const Shape := preload("res://addons/polyforge/core/measured_shape.gd")
 const Lint := preload("res://addons/polyforge/quality/lint_core.gd")
 const Recipe := preload("res://addons/polyforge/core/asset_recipe.gd")
 const Fingerprint := preload("res://addons/polyforge/core/geometry_fingerprint.gd")
+const Fit := preload("res://addons/polyforge/quality/fit_validation.gd")
+const Checks := preload("res://addons/polyforge/quality/checks.gd")
 const Canonical := preload("res://addons/polyforge/core/canonical_artifact.gd")
 var failures := 0
 var checks := 0
@@ -57,6 +59,27 @@ func _initialize() -> void:
 		var profile = Shape.extruded_profile(polygon, .2)
 		check(Lint.check_polymesh(profile, -1, true).is_empty(), "Concave extrusion accepts either winding")
 
+	var arc = Shape.arc_tube(Vector3.ZERO, Vector3.UP, Vector3.RIGHT,
+		.15, .04, 0.0, PI * 1.4, .003)
+	check(Lint.check_polymesh(arc, -1, true).is_empty(), "Curled finger is a closed oriented mesh")
+	var band = Shape.loft_band(stations, Vector2(-.15, .4), Vector2(.1, 1.6), .1, .01, .025)
+	check(Lint.check_polymesh(band, -1, true).is_empty(), "Conformed strap is a closed oriented mesh")
+	var inner = Shape.loft([Vector3(.3, 0, .3), Vector3(.3, 1, .3)], .005)
+	var shell = Shape.loft([Vector3(.5, 0, .5), Vector3(.5, 1, .5)], .005)
+	var inner_geometry := Checks.geometry({"mesh": inner.to_meshes()[""]})
+	var shell_geometry := Checks.geometry({"mesh": shell.to_meshes()[""]})
+	check(Fit.shell_clearance(inner_geometry, shell_geometry, Transform3D.IDENTITY, .1, .9) > .18,
+		"Independent shell rays measure positive clearance")
+	check(Fit.shell_clearance(shell_geometry, inner_geometry, Transform3D.IDENTITY, .1, .9) < 0.0,
+		"Reversed nested layers fail clearance")
+	var triangle := {"vertices": PackedVector3Array([Vector3(1, 0, -.5),
+		Vector3(1, 0, .5), Vector3(1.5, 1, 0)]), "triangles": [PackedInt32Array([0, 1, 2])]}
+	check(is_equal_approx(Fit.cylinder_clearance(triangle, Vector3.ZERO, Vector3.UP, .5), .5),
+		"Handle clearance uses triangle interiors")
+	triangle.vertices = PackedVector3Array([Vector3(-1, 0, -.5), Vector3(1, 0, -.5), Vector3(0, 1, .5)])
+	check(Fit.cylinder_clearance(triangle, Vector3.ZERO, Vector3.UP, .5) < 0.0,
+		"Handle penetration is detected even when every triangle vertex is outside")
+
 	var first := Recipe.load_file("res://examples/minotaur_recipe.gd")
 	var second := Recipe.load_file("res://examples/minotaur_recipe.gd")
 	check(Fingerprint.assembly_hash(first.assembly) == Fingerprint.assembly_hash(second.assembly),
@@ -65,6 +88,16 @@ func _initialize() -> void:
 	var fine := Recipe.load_file("res://examples/minotaur_recipe.gd", {"detail": 1.8})
 	check(Canonical.hash_value(coarse.metadata.shape_definitions) ==
 		Canonical.hash_value(fine.metadata.shape_definitions), "Fidelity changes preserve source shapes")
+	for spec in [coarse, fine]:
+		var fit_rules: Array = []
+		for rule in spec.checks:
+			if rule.type in ["shell_clearance", "cylinder_clearance"]:
+				fit_rules.append(rule)
+		check(fit_rules.size() == 17, "Five armor fits and twelve grip fits are mandatory")
+		var fit_result := Checks.evaluate(spec.assembly.parts, fit_rules)
+		check(fit_result.failures.is_empty(), "Fidelity boundary passes armor and grip checks: " +
+			str(fit_result.failures))
+
 	var coarse_count := 0
 	var fine_count := 0
 	for i in range(coarse.assembly.parts.size()):

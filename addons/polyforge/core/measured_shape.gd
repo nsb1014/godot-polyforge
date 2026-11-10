@@ -56,6 +56,65 @@ static func radial_segments(radius: float, tolerance: float) -> int:
 	assert(angle > 0.0, "Tolerance is below floating-point resolution")
 	return maxi(8, ceili(PI / angle / 4.0) * 4)
 
+static func section_at(stations: Array, height: float) -> Vector3:
+	assert(stations.size() >= 2 and height >= stations.front().y and height <= stations.back().y)
+	for index in range(1, stations.size()):
+		var before: Vector3 = stations[index - 1]
+		var after: Vector3 = stations[index]
+		if height <= after.y:
+			return before.lerp(after, (height - before.y) / (after.y - before.y))
+	return stations.back()
+
+static func arc_tube(center: Vector3, axis: Vector3, radial: Vector3,
+		bend_radius: float, tube_radius: float, start_angle: float, end_angle: float,
+		tolerance: float):
+	assert(center.is_finite() and axis.is_finite() and radial.is_finite())
+	assert(axis.length() > 0.0 and tube_radius > 0.0 and bend_radius > tube_radius)
+	assert(is_finite(start_angle) and is_finite(end_angle) and
+		absf(end_angle - start_angle) > 0.0 and absf(end_angle - start_angle) < TAU)
+	var normal := axis.normalized()
+	var first := (radial - normal * radial.dot(normal)).normalized()
+	assert(not first.is_zero_approx(), "Arc radial direction must be perpendicular to its axis")
+	var second := normal.cross(first)
+	var steps := maxi(2, ceili(absf(end_angle - start_angle) / TAU *
+		radial_segments(bend_radius, tolerance)))
+	var path: Array = []
+	var section: Array = []
+	for index in range(steps + 1):
+		var angle := lerpf(start_angle, end_angle, float(index) / steps)
+		path.append(center + bend_radius * (first * cos(angle) + second * sin(angle)))
+	var sides := radial_segments(tube_radius, tolerance)
+	for side in range(sides):
+		var angle := TAU * float(side) / sides
+		section.append(Vector2(cos(angle), sin(angle)) * tube_radius)
+	return PolyMesh.sweep(section, path)
+
+static func loft_band(stations: Array, start: Vector2, end: Vector2,
+		width: float, offset: float, thickness: float):
+	assert(width > 0.0 and thickness > 0.0 and start.distance_to(end) > 0.0)
+	var across := (end - start).normalized().orthogonal() * width * 0.5
+	var steps := maxi(2, ceili(start.distance_to(end) / (width * 0.5)))
+	var mesh = PolyMesh.new()
+	for index in range(steps + 1):
+		var center := start.lerp(end, float(index) / steps)
+		for depth in [offset, offset + thickness]:
+			for point in [center - across, center + across]:
+				var radii := section_at(stations, point.y)
+				assert(absf(point.x) < radii.x, "Band must stay on the front of its loft")
+				var z := radii.z * sqrt(1.0 - pow(point.x / radii.x, 2))
+				mesh.verts.append(Vector3(point.x, point.y, z + depth))
+	for index in range(steps):
+		var a := index * 4
+		var b := a + 4
+		mesh.add_face(PackedInt32Array([a, b, b + 1, a + 1]))
+		mesh.add_face(PackedInt32Array([a + 2, a + 3, b + 3, b + 2]))
+		mesh.add_face(PackedInt32Array([a, a + 2, b + 2, b]))
+		mesh.add_face(PackedInt32Array([a + 1, b + 1, b + 3, a + 3]))
+	mesh.add_face(PackedInt32Array([0, 1, 3, 2]))
+	var last := steps * 4
+	mesh.add_face(PackedInt32Array([last, last + 2, last + 3, last + 1]))
+	return mesh
+
 static func loft(stations: Array, tolerance: float):
 	assert(stations.size() >= 2, "Loft requires at least two measured stations")
 	var radius := 0.0

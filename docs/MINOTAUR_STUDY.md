@@ -77,3 +77,27 @@ The local environment supports headless Godot export and offline Blender CPU ren
 Godot display-backed preview/readability checks and the interactive browser viewer
 could not be run here. Visual review is required before treating this study as a
 finished likeness of the supplied reference.
+
+## Grip and armor-fit revision
+
+The hands use four continuous curled finger tubes and an opposing thumb around a
+frame derived from the axe axis and elbow. Palm dimensions are scaled in their
+local frame before rotation. The forearm ends at the wrist behind the handle.
+
+Bracers, greaves, and the breastplate derive their sections from the exact underlying
+body loft, including every taper station in the covered interval. Their rims use
+those same elliptical sections. The leather harness conforms to the breastplate.
+The hidden upper-arm volume beneath the shoulder plates is trimmed back to prevent
+it from appearing between the overlapping layers in this static pose.
+
+Seventeen mandatory semantic fit checks run through the normal build and parameter
+sweeps. Five armor pairs use independent ray intersections against emitted triangles
+at 32 angles, nine heights, and additional mesh station heights. Twelve hand parts
+use the minimum distance of each projected triangle to the handle axis, detecting
+penetration even when triangle vertices lie outside the cylinder. Maximum grip gaps
+also reject floating hands. The handle envelope includes the leather wraps.
+
+These checks establish the declared static fits. Armor clearance is sampled, and
+the system does not claim exhaustive collision freedom for every decorative pair
+or for future animated poses. The regression suite includes intentionally reversed
+armor layers and a triangle that crosses a handle despite exterior vertices.
