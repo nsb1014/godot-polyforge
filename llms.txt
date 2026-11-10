@@ -161,3 +161,22 @@ Inspect an existing file:
 godot --path . --script res://addons/polyforge/cli/polyforge_cli.gd -- \
   inspect res://dist/my_asset.glb
 ```
+
+## Semantic and anatomical review gate
+
+Passing topology/clearance checks does not prove that a part is anatomically correct.
+Define subject left/right separately from screen labels; encode hand thumb/finger order,
+palm and wrist directions, and skull-relative horn root regions before generation.
+Sample attachment surfaces with outward normals and validate child orientation as well as
+position. Cuffs must follow their owner's curve tangent. Compare emitted geometry against
+independently authored landmark constraints, not duplicated generator metadata.
+
+Every new semantic guard needs a negative test: flip a hand/thumb, move or rotate a horn,
+or displace a cuff and confirm the intended check fails. A clearance-only negative control
+should demonstrate why semantic checks are necessary. Test parameter boundaries too.
+
+Inspect actual exported geometry in eight full-body views plus labeled close-ups of both
+hands (palm/back) and horn roots (front/side/top). Include adjacent parts; isolate occluded
+parts in additional views. Record visual findings against the reference, fix them, rebuild,
+and rerender. Automated success is not a visual pass. Disclose remaining defects and skipped
+checks; keep an unresolved model a draft. See `docs/MINOTAUR_STUDY.md` for the worked study.

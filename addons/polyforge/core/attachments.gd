@@ -43,6 +43,8 @@ func surface(name: String, host_part: String, approximate_position: Vector3,
 		"max_hint_distance": float(options.get("max_hint_distance", INF)),
 		"position_tolerance": float(options.get("position_tolerance", 0.0001)),
 	}
+	if options.has("rotation_tolerance_degrees"):
+		records[name]["rotation_tolerance_degrees"] = float(options.rotation_tolerance_degrees)
 	return frame
 
 func snapshot() -> Dictionary:
@@ -104,6 +106,14 @@ static func validate(target_assembly, snapshot: Dictionary) -> Dictionary:
 				if child_distance > tolerance:
 					failures.append("attachment %s child %s moved %.6f from sampled frame" % [
 						name, child_name, child_distance])
+				if record.has("rotation_tolerance_degrees"):
+					var actual := child_transform.basis.orthonormalized()
+					var expected := recorded_frame.basis.orthonormalized()
+					var alignment := minf(actual.x.dot(expected.x),
+						minf(actual.y.dot(expected.y), actual.z.dot(expected.z)))
+					measurements[-1]["orientation_alignment"] = alignment
+					if alignment < cos(deg_to_rad(float(record.rotation_tolerance_degrees))):
+						failures.append("attachment %s child %s rotated away from its frame" % [name, child_name])
 		if int(record.surface) < 0 or int(record.triangle) < 0:
 			warnings.append("attachment %s did not retain a surface/triangle identifier" % name)
 	return {"ok": failures.is_empty(), "failures": failures,

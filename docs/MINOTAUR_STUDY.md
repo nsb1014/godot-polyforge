@@ -101,3 +101,42 @@ These checks establish the declared static fits. Armor clearance is sampled, and
 the system does not claim exhaustive collision freedom for every decorative pair
 or for future animated poses. The regression suite includes intentionally reversed
 armor layers and a triangle that crosses a handle despite exterior vertices.
+
+## Handedness and horn attachment revision
+
+Screen suffix `L` denotes the subject's anatomical right; `R` denotes its left.
+The two grips now have opposite thumb placement and index-to-pinky order along
+the shaft. Four `signed_axis_order` checks measure emitted mesh bounds rather
+than reading the generated hand's metadata. A mutation moves the left thumb to
+the wrong end: the semantic check rejects it while all cylinder-clearance checks
+still pass. This reproduces the blind spot that allowed the original error.
+
+Horns now use sampled skull sockets, with local +Y pointing outward and local +Z
+following projected world up. Their cuffs use the curve position and tangent.
+Attachment validation optionally checks rotation as well as root position.
+`SurfaceAttach` now accounts for Godot's clockwise front-face winding when
+computing outward normals; independent box-top and box-side tests guard this
+convention. Negative tests displace and rotate an emitted horn. Independent
+reference-estimated root regions and tip-height bounds are tested at three
+fidelity settings; attachment provenance alone cannot validate the artist's
+choice of socket location.
+
+The renderer now adds seven assembled close-ups and four isolated hand-local diagnostics: both hands front/back and the
+horns front/side/top, plus each isolated hand viewed along its palm normal and its opposite. Review these alongside the eight full-body angles. Numeric
+checks cover declared constraints, not every possible incorrect pose or likeness.
+The repository authoring instructions require semantic contracts, negative tests,
+and visual inspection as separate gates.
+
+### Visual finding log
+
+- Horn front/side/top: roots appear attached, cuffs follow the sweep, tips point
+  outward/upward. Ear/hair occlusion limits visual certainty at the sockets.
+- Hand front: opposite thumb placements are now explicit; flat thumb caps and
+  uniform tubular fingers still need anatomical shaping. Numeric finger order
+  satisfies the authored contract, but this is not a certified anatomical likeness.
+- Original rear-body hand close-ups: forearms occlude the hands. Added isolated
+  hand-local palm/back views; rear-body views alone cannot earn a visual pass.
+- Overall: silhouette, armor and axe remain simplified and leaner than the reference.
+
+Disposition: retain draft status. Structural, declared fit and semantic regression
+checks pass; full artistic/anatomical completion is not claimed.

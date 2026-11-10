@@ -171,6 +171,9 @@ static func require_axis_range(part: String, axis: int, minimum: float,
 
 static func measure(cache: Dictionary, rule: Dictionary) -> Dictionary:
 	var kind: String = rule.type
+	if kind == "signed_axis_order":
+		var offset: Vector3 = cache[rule.a].aabb.get_center() - cache[rule.b].aabb.get_center()
+		return {"value": offset.dot(rule.axis.normalized()) * float(rule.sign), "unit": "distance"}
 	if kind == "shell_clearance":
 		return {"value": FitValidation.shell_clearance(cache[rule.a], cache[rule.b],
 			rule.frame, rule.start, rule.end), "unit": "distance"}
@@ -203,10 +206,10 @@ static func evaluate(parts: Array, rules: Array) -> Dictionary:
 		var result := measure(cache, rule)
 		measurements.append({"rule": rule, "value": result.value, "unit": result.unit})
 		match rule.type:
-			"shell_clearance", "cylinder_clearance":
+			"shell_clearance", "cylinder_clearance", "signed_axis_order":
 				if not is_finite(result.value) or result.value < rule.minimum or \
 						result.value > rule.get("maximum", INF):
-					failures.append("%s %s clearance %.6f outside %.6f..%.6f" % [
+					failures.append("%s %s value %.6f outside %.6f..%.6f" % [
 						rule.a, rule.type, result.value, rule.minimum, rule.get("maximum", INF)])
 			"gap":
 				if result.value < rule.minimum:

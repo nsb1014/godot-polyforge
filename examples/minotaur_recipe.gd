@@ -2,6 +2,7 @@ extends RefCounted
 ## Static reference study. All coordinates are in a four-unit authoring frame.
 ## Height scales that frame uniformly; thickness behind the image is inferred.
 
+const Attachments := preload("res://addons/polyforge/core/attachments.gd")
 const Assembly := preload("res://addons/polyforge/core/assembly.gd")
 const Parameters := preload("res://addons/polyforge/core/parameters.gd")
 const Shape := preload("res://addons/polyforge/core/measured_shape.gd")
@@ -18,6 +19,7 @@ const Reference := preload("res://addons/polyforge/core/reference_profile.gd")
 
 const REFERENCE_SHA := "64f7a9ab586a343bc96efab38c149a99084cde31f1611665dc52ace09cd10543"
 var asset
+var attachments
 var unit := 1.0
 var tolerance := 0.012
 var shapes: Array = []
@@ -117,6 +119,8 @@ func _arc(name: String, center: Vector3, axis: Vector3, radial: Vector3,
 		"start": start, "end": end, "slot": "hide"})
 
 func _grip(suffix: String, center: Vector3, axis: Vector3, elbow: Vector3) -> Vector3:
+	# Existing suffixes describe screen positions. Subject RIGHT is screen L.
+	var thumb_sign := 1.0 if suffix == "L" else -1.0
 	var toward_elbow := elbow - center
 	var palm_normal := (toward_elbow - axis * toward_elbow.dot(axis)).normalized()
 	var across := palm_normal.cross(axis)
@@ -124,13 +128,14 @@ func _grip(suffix: String, center: Vector3, axis: Vector3, elbow: Vector3) -> Ve
 	_ellipsoid("hand_" + suffix, center + palm_normal * .182,
 		Vector3(.21, .142, .09), "hide", palm_frame.get_euler())
 	for finger in range(4):
-		var finger_center := center + axis * ((finger - 1.5) * .103)
+		var finger_center := center + axis * ((1.5 - finger) * .103 * thumb_sign)
 		_arc("finger_%s_%d" % [suffix, finger], finger_center, axis, palm_normal,
 			.135, .046, deg_to_rad(10), deg_to_rad(250))
-	_arc("thumb_" + suffix, center + axis * .225, axis, palm_normal,
+	_arc("thumb_" + suffix, center + axis * .225 * thumb_sign, axis, palm_normal,
 		.15, .06, deg_to_rad(-15), deg_to_rad(-125))
 	var wrist := center + palm_normal * .285
 	grips.append({"suffix": suffix, "center": center, "axis": axis,
+		"anatomical_side": "right" if suffix == "L" else "left",
 		"handle_radius": .078, "minimum_clearance": .004,
 		"maximum_contact_gap": .025, "wrist": wrist})
 	return wrist
@@ -148,6 +153,32 @@ func _compile_shapes(definitions: Array) -> void:
 			"elliptical_stations":
 				_poly(name, Shape.loft(definition.stations, tolerance), material,
 					definition.position, definition.basis)
+			"attached_cubic_tube":
+				var frame: Transform3D = attachments.surface(name + "_mount", definition.host,
+					definition.hint * unit, {"child": name, "inset": .035 * unit,
+					"heading": Vector3.UP, "max_hint_distance": .30 * unit,
+					"position_tolerance": .0001 * unit, "rotation_tolerance_degrees": 1.0})
+				var compiled := Shape.curved_tube(definition.controls, definition.start_radius,
+					definition.end_radius, tolerance * .5)
+				assert(compiled.ok)
+				curve_evidence.append({"name": name, "samples": compiled.points.size(),
+					"centerline_error_bound_m": compiled.maximum_chord_error_bound * unit,
+					"ring_error_bound_m": compiled.radial_error_bound * unit,
+					"tolerance_m": tolerance * .5 * unit})
+				_poly(name, compiled.mesh, material, frame.origin / unit, frame.basis, "organic", 65.0)
+			"curve_cuff":
+				var owner := _definition(definition.owner)
+				var controls: Array = owner.controls
+				var t: float = definition.t
+				var tangent: Vector3 = (controls[1] - controls[0]) * 3 * pow(1-t, 2) + \
+					(controls[2] - controls[1]) * 6 * (1-t) * t + (controls[3] - controls[2]) * 3 * t*t
+				var parent_frame: Transform3D = asset.find(definition.owner).transform
+				var center: Vector3 = parent_frame * Shape.bezier(controls, t)
+				var basis := parent_frame.basis.orthonormalized() * Basis(Quaternion(Vector3.UP, tangent.normalized()))
+				var radius := lerpf(owner.start_radius, owner.end_radius, t)
+				_add(name, Stock.torus(radius - .006, radius + definition.width,
+					Shape.radial_segments(radius + definition.width, tolerance * .5), 8),
+					center / unit, basis, material, "revolved", "trim")
 			"cubic_tube":
 				var compiled := Shape.curved_tube(definition.controls, definition.start_radius,
 					definition.end_radius, tolerance * 0.5)
@@ -178,6 +209,7 @@ func _compile_shapes(definitions: Array) -> void:
 
 func build(p) -> Dictionary:
 	asset = Assembly.new()
+	attachments = Attachments.new(asset)
 	shapes.clear()
 	curve_evidence.clear()
 	layer_fits.clear()
@@ -318,14 +350,18 @@ func build(p) -> Dictionary:
 			Vector3(side * .29, 3.46, .17), .065, "hide")
 		_ellipsoid("ear_" + suffix, Vector3(side * .36, 3.41, -.01),
 			Vector3(.19, .075, .11), "muzzle", Vector3(0, 0, side * .15))
-		var root := Vector3(side * .26, 3.53, -.01)
-		_tube("horn_" + suffix, [root, Vector3(side * 1.02, 3.31, -.035),
-			Vector3(side * 1.06, 3.78, -.055), Vector3(side * .84, 4.0, -.06)], .17, .015, "ivory")
-		_ring("horn_cuff_" + suffix, root + Vector3(side * .12, -.015, 0),
-			.147, .185, "steel", Basis(Vector3.FORWARD, PI * .5))
-		for band in [-.04, .04]:
-			_ring("horn_band_%s_%s" % [suffix, str(band)], root + Vector3(side * (.12 + band), -.015, 0),
-				.165, .19, "gold", Basis(Vector3.FORWARD, PI * .5))
+		# Local +Y exits the skull; +Z follows projected world up.
+		shapes.append({"name": "horn_" + suffix, "type": "attached_cubic_tube",
+			"host": "head_skull", "hint": Vector3(side * .50, 3.46, .035),
+			"controls": [Vector3.ZERO, Vector3(0, .56, -.10),
+				Vector3(0, .85, .12), Vector3(0, .62, .43)],
+			"start_radius": .14, "end_radius": .015, "slot": "ivory"})
+		for cuff in [{"name": "cuff", "t": .09, "slot": "steel", "width": .025},
+			{"name": "band_inner", "t": .065, "slot": "gold", "width": .012},
+			{"name": "band_outer", "t": .13, "slot": "gold", "width": .012}]:
+			shapes.append({"name": "horn_%s_%s" % [cuff.name, suffix],
+				"type": "curve_cuff", "owner": "horn_" + suffix,
+				"t": cuff.t, "width": cuff.width, "slot": cuff.slot})
 		# Mane and fur collar tufts are intentionally asymmetric in depth.
 		for tuft in range(6):
 			var center := Vector3(side * (.30 + .045 * sin(tuft)), 3.43 - tuft * .095, -.12)
@@ -447,6 +483,15 @@ func build(p) -> Dictionary:
 				"radius": grip.handle_radius * unit, "minimum": grip.minimum_clearance * unit,
 				"maximum": grip.maximum_contact_gap * unit})
 
+	# Independent semantic contract: opposite thumbs must occupy opposite shaft ends.
+	for suffix in ["L", "R"]:
+		fit_checks.append({"type": "signed_axis_order", "a": "thumb_" + suffix,
+			"b": "hand_" + suffix, "axis": axe_axis, "sign": 1.0 if suffix == "L" else -1.0,
+			"minimum": .18 * unit, "maximum": .27 * unit})
+		fit_checks.append({"type": "signed_axis_order", "a": "finger_%s_0" % suffix,
+			"b": "finger_%s_3" % suffix, "axis": axe_axis, "sign": 1.0 if suffix == "L" else -1.0,
+			"minimum": .29 * unit, "maximum": .33 * unit})
+
 	var reference := Reference.new({"sha256": REFERENCE_SHA,
 		"subject": "rightmost minotaur", "authority": "single-view visual estimates"}, {
 		"horns": {"selector": {"names": ["horn_L", "horn_R"]}, "minimum": 2},
@@ -469,6 +514,7 @@ func build(p) -> Dictionary:
 			"resolved_design": resolved.to_canonical_dict(), "appearance_binding": binding.to_canonical_dict()},
 		"process": stages.snapshot(), "style_compilation": Canonical.canonicalize(style),
 		"reference_profile": reference.to_canonical_dict(),
+		"attachments": attachments.snapshot(),
 		"readability": {"target_pixels": 128, "minimum_regions": 3,
 			"minimum_contrast": .04, "minimum_stroke_px": 1.0},
 		"metadata": {"description": "Measured-profile minotaur reference study",
