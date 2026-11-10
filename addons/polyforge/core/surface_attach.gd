@@ -77,7 +77,8 @@ static func closest_point(mesh: Mesh, approximate_position: Vector3,
 			var a: Vector3 = host_transform * verts[idx[ti]]
 			var b: Vector3 = host_transform * verts[idx[ti + 1]]
 			var c: Vector3 = host_transform * verts[idx[ti + 2]]
-			var normal := (b - a).cross(c - a)
+			# Godot front faces are clockwise. Reverse the cross product for outward normals.
+			var normal := (c - a).cross(b - a)
 			if normal.length_squared() < 0.000000000001:
 				continue
 			var point := closest_point_on_triangle(approximate_position, a, b, c)

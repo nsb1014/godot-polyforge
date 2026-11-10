@@ -621,6 +621,12 @@ func _initialize() -> void:
 	var mount_asset := Assembly.new()
 	var mount_host := Stock.with_material(Stock.box(Vector3.ONE), _material("mount_host"))
 	mount_asset.add("host", mount_host)
+	var top_hit := SurfaceAttach.closest_point(mount_host, Vector3(0, 1, 0))
+	check(top_hit.normal.dot(Vector3.UP) > .999, "Box top normal points outward, independently of frame")
+	check(SurfaceAttach.frame_from_hit(top_hit, .02).origin.y < top_hit.position.y,
+		"Positive attachment inset sinks into host")
+	var side_hit := SurfaceAttach.closest_point(mount_host, Vector3(1, 0, 0))
+	check(side_hit.normal.dot(Vector3.RIGHT) > .999, "Box side normal points outward")
 	var mounts := Attachments.new(mount_asset)
 	var mount_frame := mounts.surface("top_socket", "host", Vector3(0, 1.0, 0), {
 		"child": "marker", "max_hint_distance": 0.6, "position_tolerance": 0.0001})
